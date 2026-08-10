@@ -1,1 +1,455 @@
 
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bewerber</title>
+    <link rel="stylesheet" href="../static/css/style.css">
+</head>
+<body>
+
+<!-- ========================= LOGIN SCREEN ========================= -->
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <div class="login-logo">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="8.5" cy="7" r="4"></circle>
+                <line x1="20" y1="8" x2="20" y2="14"></line>
+                <line x1="23" y1="11" x2="17" y2="11"></line>
+            </svg>
+        </div>
+        <h1>Bewerber</h1>
+        <p class="login-hint">Bitte geben Sie den richtigen Code ein</p>
+        <div class="login-form">
+            <input type="password" id="access-code" placeholder="Zugangscode..." autocomplete="off">
+            <button id="login-btn" class="btn-primary">Einloggen</button>
+        </div>
+        <div id="login-error" class="login-error"></div>
+    </div>
+</div>
+
+<!-- ========================= MAIN APP ========================= -->
+<div id="main-app" class="main-app hidden">
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="8.5" cy="7" r="4"></circle>
+                    <line x1="20" y1="8" x2="20" y2="14"></line>
+                    <line x1="23" y1="11" x2="17" y2="11"></line>
+                </svg>
+            </div>
+            <span class="sidebar-title">Bewerber</span>
+        </div>
+        <nav class="sidebar-nav">
+            <button class="nav-btn active" data-page="anschreiben">
+                <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h9"></path>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                </svg>
+                <span class="nav-text">Anschreiben generieren</span>
+            </button>
+            <button class="nav-btn" data-page="send-email">
+                <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+                <span class="nav-text">Send Emails</span>
+            </button>
+            <button class="nav-btn admin-only hidden" data-page="dashboard">
+                <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="20" x2="18" y2="10"></line>
+                    <line x1="12" y1="20" x2="12" y2="4"></line>
+                    <line x1="6" y1="20" x2="6" y2="14"></line>
+                </svg>
+                <span class="nav-text">Admin Dashboard</span>
+            </button>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="status-indicator">
+                <span class="status-dot"></span>
+                <span class="status-text">Online</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ===== CONTENT ===== -->
+    <main class="content">
+
+        <!-- ============ PAGE: ANSCHREIBEN ============ -->
+        <div id="page-anschreiben" class="page active">
+            <div class="page-header">
+                <h1 class="page-title">Anschreiben generieren</h1>
+                <p class="page-subtitle">Laden Sie Ihre Dateien hoch und generieren Sie Bewerbungen</p>
+            </div>
+
+            <!-- Upload Form -->
+            <div id="gen-form" class="card-grid">
+                <div class="upload-card" data-type="excel" data-accept=".xlsx,.xls">
+                    <input type="file" id="excel-input" accept=".xlsx,.xls" hidden>
+                    <label for="excel-input" class="upload-label">
+                        <div class="upload-icon">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                            </svg>
+                        </div>
+                        <div class="upload-text">
+                            <span class="upload-title">Excel Datei</span>
+                            <span class="upload-hint">.xlsx, .xls</span>
+                        </div>
+                    </label>
+                    <div class="upload-filename" id="excel-name"></div>
+                </div>
+
+                <div class="upload-card" data-type="cv" data-accept=".pdf">
+                    <input type="file" id="cv-input" accept=".pdf" hidden>
+                    <label for="cv-input" class="upload-label">
+                        <div class="upload-icon">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                            </svg>
+                        </div>
+                        <div class="upload-text">
+                            <span class="upload-title">Lebenslauf (PDF)</span>
+                            <span class="upload-hint">.pdf</span>
+                        </div>
+                    </label>
+                    <div class="upload-filename" id="cv-name"></div>
+                </div>
+
+                <div class="upload-card" data-type="template" data-accept=".docx">
+                    <input type="file" id="template-input" accept=".docx" hidden>
+                    <label for="template-input" class="upload-label">
+                        <div class="upload-icon">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                            </svg>
+                        </div>
+                        <div class="upload-text">
+                            <span class="upload-title">Anschreiben Template</span>
+                            <span class="upload-hint">.docx</span>
+                        </div>
+                    </label>
+                    <div class="upload-filename" id="template-name"></div>
+                </div>
+
+                <div class="upload-card" data-type="other" data-accept=".pdf">
+                    <input type="file" id="other-input" accept=".pdf" hidden>
+                    <label for="other-input" class="upload-label">
+                        <div class="upload-icon">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></polyline>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                            </svg>
+                        </div>
+                        <div class="upload-text">
+                            <span class="upload-title">Zeugnisse & Zertifikate</span>
+                            <span class="upload-hint">.pdf</span>
+                        </div>
+                    </label>
+                    <div class="upload-filename" id="other-name"></div>
+                </div>
+            </div>
+
+            <!-- Config -->
+            <div class="config-section">
+                <div class="config-row">
+                    <div class="config-field">
+                        <label>Anschreiben Position</label>
+                        <input type="number" id="anschreiben-pos" value="2" min="1" class="input-field">
+                    </div>
+                    <div class="config-field">
+                        <label>Bewerbungsname</label>
+                        <input type="text" id="bewerbungsname" value="Bewerbung_Samira_Saddouki" class="input-field">
+                    </div>
+                </div>
+                <button id="generate-btn" class="btn-primary btn-large" disabled>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                    </svg>
+                    Generate
+                </button>
+            </div>
+
+            <!-- Progress -->
+            <div id="gen-progress" class="progress-section hidden">
+                <div class="progress-header">
+                    <h3>Generierung läuft...</h3>
+                    <span id="gen-progress-text" class="progress-text">0 / 0</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div id="gen-progress-bar" class="progress-bar"></div>
+                </div>
+                <div id="gen-log" class="log-list"></div>
+            </div>
+
+            <!-- Success -->
+            <div id="gen-success" class="success-card hidden">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+                <h3>Generierung abgeschlossen!</h3>
+                <p>Sie können jetzt E-Mails senden.</p>
+            </div>
+        </div>
+
+        <!-- ============ PAGE: SEND EMAIL ============ -->
+        <div id="page-send-email" class="page">
+            <div class="page-header">
+                <h1 class="page-title">Send Emails</h1>
+                <p class="page-subtitle" id="send-info">Bitte zuerst Anschreiben generieren</p>
+            </div>
+
+            <!-- Warning: Not Generated -->
+            <div id="send-warning" class="warning-card">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                <p>Bitte generieren Sie zuerst die Anschreiben.</p>
+            </div>
+
+            <!-- Send Form -->
+            <div id="send-form" class="hidden">
+                <div class="card-grid">
+                    <div class="upload-card" data-type="letter" data-accept=".docx">
+                        <input type="file" id="letter-input" accept=".docx" hidden>
+                        <label for="letter-input" class="upload-label">
+                            <div class="upload-icon">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                    <polyline points="14 2 14 8 20 8"></polyline>
+                                </svg>
+                            </div>
+                            <div class="upload-text">
+                                <span class="upload-title">Email Template (DOCX)</span>
+                                <span class="upload-hint">.docx</span>
+                            </div>
+                        </label>
+                        <div class="upload-filename" id="letter-name"></div>
+                    </div>
+
+                    <div class="upload-card" data-type="extra" data-accept=".pdf">
+                        <input type="file" id="extra-input" accept=".pdf" hidden>
+                        <label for="extra-input" class="upload-label">
+                            <div class="upload-icon">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                    <polyline points="14 2 14 8 20 8"></polyline>
+                                </svg>
+                            </div>
+                            <div class="upload-text">
+                                <span class="upload-title">Extra Anhang (Optional)</span>
+                                <span class="upload-hint">.pdf</span>
+                            </div>
+                        </label>
+                        <div class="upload-filename" id="extra-name"></div>
+                    </div>
+                </div>
+
+                <div class="config-section">
+                    <div class="config-row">
+                        <div class="config-field">
+                            <label>Delay zwischen E-Mails (Sekunden)</label>
+                            <input type="number" id="delay-input" value="10" min="2" class="input-field">
+                        </div>
+                        <div class="config-field">
+                            <label>Start ab Nummer</label>
+                            <input type="number" id="start-input" value="1" min="1" class="input-field">
+                        </div>
+                    </div>
+
+                    <div class="send-mode-section">
+                        <label class="radio-group-label">Send Mode</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="send-mode" value="now" checked>
+                                <span class="radio-custom"></span>
+                                <span>Send Now</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="send-mode" value="schedule">
+                                <span class="radio-custom"></span>
+                                <span>Schedule</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div id="schedule-config" class="config-row hidden">
+                        <div class="config-field">
+                            <label>Datum</label>
+                            <input type="date" id="schedule-date" class="input-field">
+                        </div>
+                        <div class="config-field">
+                            <label>Stunde</label>
+                            <input type="number" id="schedule-hour" value="9" min="0" max="23" class="input-field">
+                        </div>
+                        <div class="config-field">
+                            <label>Minute</label>
+                            <input type="number" id="schedule-minute" value="0" min="0" max="59" class="input-field">
+                        </div>
+                    </div>
+                    <div id="schedule-info" class="info-text hidden"></div>
+                    <div id="schedule-error" class="error-text hidden"></div>
+
+                    <button id="send-btn" class="btn-primary btn-large" disabled>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                        Start Sending
+                    </button>
+                </div>
+            </div>
+
+            <!-- Schedule Countdown -->
+            <div id="schedule-countdown" class="countdown-card hidden">
+                <div class="countdown-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                </div>
+                <h3>Geplant für Sendung</h3>
+                <div id="countdown-timer" class="countdown-timer">00:00:00</div>
+                <p id="countdown-text"></p>
+            </div>
+
+            <!-- Send Progress -->
+            <div id="send-progress" class="progress-section hidden">
+                <div class="progress-header">
+                    <h3>E-Mails werden gesendet...</h3>
+                    <span id="send-progress-text" class="progress-text">0 / 0</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div id="send-progress-bar" class="progress-bar"></div>
+                </div>
+                <div id="send-log" class="log-list"></div>
+            </div>
+
+            <!-- Interrupted / Resume -->
+            <div id="send-interrupted" class="interrupted-card hidden">
+                <div class="interrupted-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                </div>
+                <h3>Verbindung unterbrochen</h3>
+                <p>Bitte Internetverbindung prüfen und fortsetzen.</p>
+                <div class="resume-form">
+                    <label>Weiter ab Nummer:</label>
+                    <input type="number" id="resume-num" value="1" min="1" class="input-field">
+                    <button id="resume-btn" class="btn-primary">Weiter senden</button>
+                </div>
+            </div>
+
+            <!-- Send Success -->
+            <div id="send-success" class="success-card hidden">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+                <h3>Alle E-Mails erfolgreich gesendet!</h3>
+                <button id="new-application-btn" class="btn-primary">Neue Bewerbung starten</button>
+            </div>
+        </div>
+
+        <!-- ============ PAGE: DASHBOARD ============ -->
+        <div id="page-dashboard" class="page">
+            <div class="page-header">
+                <h1 class="page-title">📊 Admin Dashboard</h1>
+                <p class="page-subtitle">Übersicht aller Bewerbungsaktivitäten</p>
+            </div>
+
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-generated" style="color: #60a5fa;">0</div>
+                    <div class="stat-label">Generiert</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-sent" style="color: #4ade80;">0</div>
+                    <div class="stat-label">Gesendet</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-skipped" style="color: #ff6b6b;">0</div>
+                    <div class="stat-label">Skipped</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-errors" style="color: #f97316;">0</div>
+                    <div class="stat-label">Fehler</div>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="filters-row">
+                <div class="filter-field">
+                    <label>Session</label>
+                    <select id="filter-session" class="select-field">
+                        <option value="Alle">Alle</option>
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <label>Zeit</label>
+                    <select id="filter-time" class="select-field">
+                        <option value="0">Alle</option>
+                        <option value="24">1 Tag</option>
+                        <option value="72">3 Tage</option>
+                        <option value="168">7 Tage</option>
+                        <option value="360">15 Tage</option>
+                        <option value="720">1 Monat</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Data Table -->
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Session</th>
+                            <th>Generiert</th>
+                            <th>Gesendet</th>
+                            <th>Email / Firma</th>
+                            <th>Fehler</th>
+                            <th>Zeit</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dashboard-table-body">
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Excel Downloads -->
+            <div class="excel-section">
+                <h3 class="section-title">📄 Excel-Dateien</h3>
+                <div id="excel-list"></div>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<!-- Toast Container -->
+<div id="toast-container" class="toast-container"></div>
+
+<!-- Loading Overlay -->
+<div id="loading-overlay" class="loading-overlay hidden">
+    <div class="spinner"></div>
+</div>
+
+<script src="../static/js/app.js"></script>
+</body>
+</html>
