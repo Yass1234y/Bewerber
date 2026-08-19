@@ -1,12 +1,20 @@
-FROM python:3.10-slim
+FROM python:3.12-slim
 
-# تثبيت LibreOffice
-RUN apt-get update && apt-get install -y libreoffice-core libreoffice-writer && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libreoffice \
+    libreoffice-writer \
+    fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
+EXPOSE 5000
+
+CMD ["python", "app.py"]

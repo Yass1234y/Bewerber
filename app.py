@@ -11,34 +11,45 @@ import smtplib
 import importlib.util
 import sys
 import subprocess
+import platform
 from pathlib import Path
+
 from docx import Document
 import pandas as pd
 from PyPDF2 import PdfReader, PdfWriter
+
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
+
 from collections import defaultdict
 from werkzeug.utils import secure_filename
 
 
-# ==========================================
+# ============================================================
 # APP
-# ==========================================
+# ============================================================
 
 app = Flask(__name__)
 
-# DO NOT CHANGE
-app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB
+# لا نرفع الحد الأدنى للنشر
+app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
 
 
-# ==========================================
+# ============================================================
 # CONFIGURATION
-# ==========================================
+# ============================================================
 
-ACCESS_CODE = os.environ.get("ACCESS_CODE", "user2024")
-ADMIN_CODE = os.environ.get("ADMIN_CODE", "admin2024")
+ACCESS_CODE = os.environ.get(
+    "ACCESS_CODE",
+    "user2024"
+)
+
+ADMIN_CODE = os.environ.get(
+    "ADMIN_CODE",
+    "admin2024"
+)
 
 GMAIL_USER = os.environ.get(
     "GMAIL_USER",
@@ -51,33 +62,53 @@ GMAIL_PASS = os.environ.get(
 )
 
 
-# ==========================================
-# DATA DIRECTORIES
-# ==========================================
+# ============================================================
+# ABSOLUTE PATHS
+# ============================================================
 
-DATA_DIR = Path("data")
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+BASE_DIR = Path(__file__).resolve().parent
 
+DATA_DIR = BASE_DIR / "data"
 EXCELS_DIR = DATA_DIR / "excels"
-EXCELS_DIR.mkdir(parents=True, exist_ok=True)
-
 APPLICATIONS_DIR = DATA_DIR / "applications"
-APPLICATIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 LOGS_DB = DATA_DIR / "logs.db"
 
 
-# ==========================================
+DATA_DIR.mkdir(
+    parents=True,
+    exist_ok=True
+)
+
+EXCELS_DIR.mkdir(
+    parents=True,
+    exist_ok=True
+)
+
+APPLICATIONS_DIR.mkdir(
+    parents=True,
+    exist_ok=True
+)
+
+
+# ============================================================
 # DATABASE
-# ==========================================
+# ============================================================
 
 def init_db():
 
-    conn = sqlite3.connect(str(LOGS_DB))
+    LOGS_DB.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
-    c = conn.cursor()
+    conn = sqlite3.connect(
+        str(LOGS_DB)
+    )
 
-    c.execute("""
+    cursor = conn.cursor()
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS bewerber_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_name TEXT,
@@ -92,7 +123,7 @@ def init_db():
         )
     """)
 
-    c.execute("""
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS excel_uploads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_name TEXT,
@@ -111,6 +142,12 @@ init_db()
 
 def get_db():
 
+    # تأكد دائمًا أن DB موجودة
+    LOGS_DB.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
     conn = sqlite3.connect(
         str(LOGS_DB),
         check_same_thread=False
@@ -121,9 +158,9 @@ def get_db():
     return conn
 
 
-# ==========================================
+# ============================================================
 # GLOBAL STATE
-# ==========================================
+# ============================================================
 
 state = {
 
@@ -169,34 +206,250 @@ state = {
 state_lock = threading.Lock()
 
 
-# ==========================================
-# HELPERS
-# ==========================================
+# ============================================================
+# DATETIME
+# ============================================================
 
-def convert(docx_path, pdf_path):
+def utc_now():
 
-    docx_path = Path(docx_path)
-    pdf_path = Path(pdf_path)
-
-    subprocess.run(
-        [
-            "libreoffice",
-            "--headless",
-            "--convert-to",
-            "pdf",
-            "--outdir",
-            str(pdf_path.parent),
-            str(docx_path)
-        ],
-        check=True
+    return datetime.datetime.now(
+        datetime.timezone.utc
     )
 
 
+# ============================================================
+# LIBREOFFICE
+# ============================================================
+
+def get_libreoffice():
+
+    system = platform.system()
+
+    # -----------------------------
+    # WINDOWS
+    # -----------------------------
+
+    if system == "Windows":
+
+        candidates = [
+
+            Path(
+                r"C:\Program Files\LibreOffice\program\soffice.exe"
+            ),
+
+            Path(
+                r"C:\Program Files (x86)\LibreOffice\program\soffice.exe"
+            ),
+
+        ]
+
+        for path in candidates:
+
+            if path.exists():
+
+                return str(path)
+
+        found = shutil.which(
+            "soffice"
+        )
+
+        if found:
+            return found
+
+        found = shutil.which(
+            "libreoffice"
+        )
+
+        if found:
+            return found
+
+        raise FileNotFoundError(
+            "LibreOffice غير موجود على Windows. "
+            "ثبت LibreOffice أو أضف soffice.exe إلى PATH."
+        )
+
+    # -----------------------------
+    # LINUX / DOCKER
+    # -----------------------------
+
+    found = shutil.which(
+        "libreoffice"
+    )
+
+    if found:
+        return found
+
+    found = shutil.which(
+        "soffice"
+    )
+
+    if found:
+        return found
+
+    raise FileNotFoundError(
+        "LibreOffice غير موجود في السيرفر."
+    )
+
+
+# ============================================================
+# DOCX -> PDF
+# ============================================================
+
+def convert(docx_path, pdf_path):
+
+    docx_path = Path(
+        docx_path
+    ).resolve()
+
+    pdf_path = Path(
+        pdf_path
+    ).resolve()
+
+    if not docx_path.exists():
+
+        raise FileNotFoundError(
+            f"DOCX not found: {docx_path}"
+        )
+
+    pdf_path.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    soffice = get_libreoffice()
+
+    # profile مستقل لكل عملية
+    profile_dir = (
+        pdf_path.parent /
+        ".libreoffice_profile"
+    )
+
+    profile_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    # Windows/Linux file URL
+    profile_uri = (
+        profile_dir
+        .resolve()
+        .as_uri()
+    )
+
+    command = [
+
+        soffice,
+
+        "--headless",
+
+        f"-env:UserInstallation={profile_uri}",
+
+        "--convert-to",
+        "pdf:writer_pdf_Export",
+
+        "--outdir",
+        str(pdf_path.parent),
+
+        str(docx_path),
+    ]
+
+    try:
+
+        result = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=120
+        )
+
+    except subprocess.TimeoutExpired:
+
+        raise RuntimeError(
+            "LibreOffice conversion timed out."
+        )
+
+    except FileNotFoundError:
+
+        raise RuntimeError(
+            f"LibreOffice executable not found: {soffice}"
+        )
+
+    print(
+        "LibreOffice stdout:",
+        result.stdout
+    )
+
+    print(
+        "LibreOffice stderr:",
+        result.stderr
+    )
+
+    print(
+        "LibreOffice return code:",
+        result.returncode
+    )
+
+    generated_pdf = (
+        pdf_path.parent /
+        f"{docx_path.stem}.pdf"
+    )
+
+    if not generated_pdf.exists():
+
+        raise RuntimeError(
+            "LibreOffice لم ينشئ PDF.\n"
+            f"Expected: {generated_pdf}\n"
+            f"stdout: {result.stdout}\n"
+            f"stderr: {result.stderr}"
+        )
+
+    # إذا كان الاسم المطلوب مختلفًا
+    if generated_pdf != pdf_path:
+
+        if pdf_path.exists():
+            pdf_path.unlink()
+
+        generated_pdf.replace(
+            pdf_path
+        )
+
+    if not pdf_path.exists():
+
+        raise FileNotFoundError(
+            f"PDF not found after conversion: {pdf_path}"
+        )
+
+    if pdf_path.stat().st_size <= 0:
+
+        raise IOError(
+            f"PDF is empty: {pdf_path}"
+        )
+
+    # حذف profile
+    try:
+
+        shutil.rmtree(
+            profile_dir,
+            ignore_errors=True
+        )
+
+    except Exception:
+        pass
+
+    return pdf_path
+
+
+# ============================================================
+# NETWORK ERROR
+# ============================================================
+
 def is_network_error(e):
 
-    err = str(e).lower()
+    error_text = str(e).lower()
 
     keywords = [
+
         "connection",
         "network",
         "timeout",
@@ -208,97 +461,79 @@ def is_network_error(e):
         "reset",
         "ssl",
         "eof",
-        "timed out"
+        "timed out",
+
     ]
 
     return (
-        any(k in err for k in keywords)
-        or isinstance(
+
+        any(
+            keyword in error_text
+            for keyword in keywords
+        )
+
+        or
+
+        isinstance(
             e,
             (
                 socket.timeout,
                 socket.gaierror,
-                OSError
+                OSError,
             )
         )
     )
 
 
-# ==========================================
+# ============================================================
 # RESET
-# ==========================================
+# ============================================================
 
 def reset_state():
 
     with state_lock:
 
-        keys_to_reset = [
-            "generating",
-            "sending",
-            "generated",
+        state["generating"] = False
+        state["sending"] = False
 
-            "base_dir",
+        state["generated"] = False
 
-            "other",
-            "extra",
+        state["base_dir"] = None
 
-            "scheduled_dt",
+        state["other"] = None
+        state["extra"] = None
 
-            "send_done",
-            "interrupted_at",
+        state["scheduled_dt"] = None
 
-            "gen_progress",
-            "gen_log",
-            "gen_total",
+        state["send_done"] = False
+        state["interrupted_at"] = None
 
-            "send_progress",
-            "send_log",
-            "send_total",
+        state["gen_progress"] = 0
+        state["gen_log"] = []
+        state["gen_total"] = 0
 
-            "bewerbungsname",
-            "total_companies",
+        state["send_progress"] = 0
+        state["send_log"] = []
+        state["send_total"] = 0
 
-            "anschreiben_pos",
-            "delay",
-            "start",
+        state["bewerbungsname"] = None
+        state["total_companies"] = 0
 
-            "waiting_scheduled",
-            "network_error",
-        ]
+        state["anschreiben_pos"] = 2
 
-        for key in keys_to_reset:
+        state["delay"] = 10
+        state["start"] = 1
 
-            if key not in state:
-                continue
+        state["waiting_scheduled"] = False
+        state["network_error"] = False
 
-            if isinstance(state[key], list):
-
-                state[key] = []
-
-            elif isinstance(state[key], int):
-
-                if key == "start":
-                    state[key] = 1
-
-                elif key == "anschreiben_pos":
-                    state[key] = 2
-
-                elif key == "delay":
-                    state[key] = 10
-
-                else:
-                    state[key] = 0
-
-            else:
-
-                state[key] = None
-
+        # لا نخرج المستخدم من الحساب
         state["logged_in"] = True
 
 
-# ==========================================
+# ============================================================
 # LOGGING
-# ==========================================
+# ============================================================
 
 def log_event(
     session_name,
@@ -314,6 +549,9 @@ def log_event(
     conn = None
 
     try:
+
+        # تأكد من وجود الجدول
+        init_db()
 
         conn = get_db()
 
@@ -340,7 +578,10 @@ def log_event(
                 firma,
                 status,
                 error_msg or "",
-                json.dumps(files_sent or [])
+                json.dumps(
+                    files_sent or [],
+                    ensure_ascii=False
+                ),
             )
         )
 
@@ -359,9 +600,9 @@ def log_event(
             conn.close()
 
 
-# ==========================================
+# ============================================================
 # EXCEL LOCAL STORAGE
-# ==========================================
+# ============================================================
 
 def save_excel_to_db(
     file_path,
@@ -371,7 +612,11 @@ def save_excel_to_db(
 
     try:
 
-        file_path = Path(file_path)
+        init_db()
+
+        file_path = Path(
+            file_path
+        ).resolve()
 
         if not file_path.exists():
 
@@ -379,11 +624,18 @@ def save_excel_to_db(
                 f"Excel file not found: {file_path}"
             )
 
-        timestamp = datetime.datetime.utcnow().strftime(
+        EXCELS_DIR.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+        timestamp = utc_now().strftime(
             "%Y%m%d_%H%M%S_%f"
         )
 
-        safe_filename = secure_filename(filename)
+        safe_filename = secure_filename(
+            filename or "upload.xlsx"
+        )
 
         if not safe_filename:
 
@@ -394,7 +646,8 @@ def save_excel_to_db(
         )
 
         storage_path = (
-            EXCELS_DIR / storage_filename
+            EXCELS_DIR /
+            storage_filename
         )
 
         shutil.copy2(
@@ -416,8 +669,8 @@ def save_excel_to_db(
             """,
             (
                 session_name,
-                filename,
-                str(storage_path)
+                filename or safe_filename,
+                str(storage_path),
             )
         )
 
@@ -436,9 +689,9 @@ def save_excel_to_db(
         return False
 
 
-# ==========================================
+# ============================================================
 # CLEAN OLD EXCEL FILES
-# ==========================================
+# ============================================================
 
 def clean_old_excels():
 
@@ -446,12 +699,16 @@ def clean_old_excels():
 
     try:
 
+        init_db()
+
         conn = get_db()
 
-        yesterday = (
-            datetime.datetime.utcnow()
+        cutoff = (
+            utc_now()
             - datetime.timedelta(days=1)
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        ).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
 
         old = conn.execute(
             """
@@ -459,7 +716,7 @@ def clean_old_excels():
             FROM excel_uploads
             WHERE uploaded_at < ?
             """,
-            (yesterday,)
+            (cutoff,)
         ).fetchall()
 
         for ex in old:
@@ -504,11 +761,14 @@ def clean_old_excels():
             conn.close()
 
 
-# ==========================================
-# FILE HELPERS
-# ==========================================
+# ============================================================
+# SAFE FILENAME
+# ============================================================
 
-def get_safe_filename(filename, fallback):
+def get_safe_filename(
+    filename,
+    fallback
+):
 
     if not filename:
 
@@ -524,6 +784,10 @@ def get_safe_filename(filename, fallback):
 
     return filename
 
+
+# ============================================================
+# SAVE UPLOAD
+# ============================================================
 
 def save_upload(
     file_storage,
@@ -542,16 +806,24 @@ def save_upload(
         fallback_name
     )
 
-    target_dir = Path(target_dir)
+    target_dir = Path(
+        target_dir
+    )
 
     target_dir.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    path = target_dir / filename
+    path = (
+        target_dir /
+        filename
+    )
 
-    file_storage.save(str(path))
+    # حفظ أثناء request فقط
+    file_storage.save(
+        str(path)
+    )
 
     if not path.exists():
 
@@ -565,92 +837,12 @@ def save_upload(
             f"Saved file is empty: {path}"
         )
 
-    return path
+    return path.resolve()
 
 
-def save_file_from_request(
-    file_storage,
-    target_dir,
-    fallback_name
-):
-
-    return save_upload(
-        file_storage,
-        target_dir,
-        fallback_name
-    )
-
-
-def save_other_file(
-    file_storage,
-    target_dir
-):
-
-    if not file_storage:
-
-        return None
-
-    if not file_storage.filename:
-
-        return None
-
-    path = save_upload(
-        file_storage,
-        target_dir,
-        "Zeugnisse.pdf"
-    )
-
-    with state_lock:
-
-        state["other"] = str(path)
-
-    return path
-
-
-def save_extra_file(
-    file_storage,
-    target_dir
-):
-
-    if not file_storage:
-
-        with state_lock:
-            state["extra"] = None
-
-        return None
-
-    if not file_storage.filename:
-
-        with state_lock:
-            state["extra"] = None
-
-        return None
-
-    filename = get_safe_filename(
-        file_storage.filename,
-        "Anhang.pdf"
-    )
-
-    if "." not in filename:
-
-        filename = "Anhang.pdf"
-
-    path = save_upload(
-        file_storage,
-        target_dir,
-        filename
-    )
-
-    with state_lock:
-
-        state["extra"] = str(path)
-
-    return path
-
-
-# ==========================================
-# SAVE ALL GENERATE FILES
-# ==========================================
+# ============================================================
+# SAVE GENERATE FILES
+# ============================================================
 
 def save_generate_files(
     excel_file,
@@ -660,62 +852,46 @@ def save_generate_files(
     base_dir
 ):
 
-    base_dir = Path(base_dir)
+    base_dir = Path(
+        base_dir
+    )
 
     base_dir.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    # --------------------------------------
-    # Excel
-    # --------------------------------------
-
-    excel_path = save_file_from_request(
+    excel_path = save_upload(
         excel_file,
         base_dir,
         "companies.xlsx"
     )
 
-    # --------------------------------------
-    # CV
-    # --------------------------------------
-
-    cv_path = save_file_from_request(
+    cv_path = save_upload(
         cv_file,
         base_dir,
         "Lebenslauf.pdf"
     )
 
-    # --------------------------------------
-    # Template
-    # --------------------------------------
-
-    template_path = save_file_from_request(
+    template_path = save_upload(
         template_file,
         base_dir,
         "Anschreiben.docx"
     )
 
-    # --------------------------------------
-    # Other
-    # --------------------------------------
-
-    other_path = save_file_from_request(
+    other_path = save_upload(
         other_file,
         base_dir,
         "Zeugnisse.pdf"
     )
 
-    # --------------------------------------
-    # Verify everything
-    # --------------------------------------
-
     files = [
+
         excel_path,
         cv_path,
         template_path,
-        other_path
+        other_path,
+
     ]
 
     for path in files:
@@ -736,13 +912,13 @@ def save_generate_files(
         excel_path,
         cv_path,
         template_path,
-        other_path
+        other_path,
     )
 
 
-# ==========================================
+# ============================================================
 # OLD VALUES
-# ==========================================
+# ============================================================
 
 def save_old_values(
     salutation,
@@ -752,6 +928,15 @@ def save_old_values(
     output_dir
 ):
 
+    output_dir = Path(
+        output_dir
+    )
+
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
     content = f'''
 old_salutation = {salutation!r}
 old_person = {person_full!r}
@@ -760,7 +945,7 @@ old_adresse_3 = {adresse_3!r}
 '''
 
     with open(
-        Path(output_dir) / "saved_values.py",
+        output_dir / "saved_values.py",
         "w",
         encoding="utf-8"
     ) as f:
@@ -768,9 +953,9 @@ old_adresse_3 = {adresse_3!r}
         f.write(content)
 
 
-# ==========================================
+# ============================================================
 # GENERATE LETTER
-# ==========================================
+# ============================================================
 
 def generate_letter(
     template_path,
@@ -778,8 +963,24 @@ def generate_letter(
     output_dir
 ):
 
-    template_path = Path(template_path)
-    output_dir = Path(output_dir)
+    template_path = Path(
+        template_path
+    ).resolve()
+
+    output_dir = Path(
+        output_dir
+    ).resolve()
+
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    if not template_path.exists():
+
+        raise FileNotFoundError(
+            f"Template not found: {template_path}"
+        )
 
     doc = Document(
         str(template_path)
@@ -801,9 +1002,9 @@ def generate_letter(
         row["email"]
     )
 
-    # --------------------------------------
+    # ------------------------------------------
     # Gender
-    # --------------------------------------
+    # ------------------------------------------
 
     if person_full.startswith("Herr"):
 
@@ -820,15 +1021,18 @@ def generate_letter(
         salutation = "e "
         gender_def = False
 
-    # --------------------------------------
+    # ------------------------------------------
     # Address
-    # --------------------------------------
+    # ------------------------------------------
 
     if "|" in adresse:
 
         adresse_1, adresse_2 = [
             x.strip()
-            for x in adresse.split("|", 1)
+            for x in adresse.split(
+                "|",
+                1
+            )
         ]
 
     else:
@@ -836,11 +1040,15 @@ def generate_letter(
         adresse_1 = adresse
         adresse_2 = adresse
 
-    adresse_3 = adresse_2[6:]
+    adresse_3 = (
+        adresse_2[6:]
+        if len(adresse_2) >= 6
+        else adresse_2
+    )
 
-    # --------------------------------------
+    # ------------------------------------------
     # Replace placeholders
-    # --------------------------------------
+    # ------------------------------------------
 
     for p in doc.paragraphs:
 
@@ -926,15 +1134,17 @@ def generate_letter(
 
         if len(p.runs) == 0:
 
-            p.add_run(full)
+            p.add_run(
+                full
+            )
 
         else:
 
             p.runs[0].text = full
 
-    # --------------------------------------
-    # Save DOCX
-    # --------------------------------------
+    # ------------------------------------------
+    # Safe filename
+    # ------------------------------------------
 
     safe_name = (
         firma
@@ -942,11 +1152,9 @@ def generate_letter(
         .replace("\\", "_")
     )
 
-    safe_name = (
-        get_safe_filename(
-            safe_name,
-            "Firma"
-        )
+    safe_name = get_safe_filename(
+        safe_name,
+        "Firma"
     )
 
     docx_path = (
@@ -959,30 +1167,57 @@ def generate_letter(
         f"{safe_name}.pdf"
     )
 
+    # ------------------------------------------
+    # Save DOCX
+    # ------------------------------------------
+
     doc.save(
         str(docx_path)
     )
 
-    # --------------------------------------
-    # Convert
-    # --------------------------------------
+    if not docx_path.exists():
+
+        raise IOError(
+            f"DOCX was not created: {docx_path}"
+        )
+
+    # ------------------------------------------
+    # Convert DOCX -> PDF
+    # ------------------------------------------
 
     convert(
         docx_path,
         pdf_path
     )
 
-    # --------------------------------------
-    # Delete DOCX
-    # --------------------------------------
+    # ------------------------------------------
+    # Verify PDF
+    # ------------------------------------------
 
-    if docx_path.exists():
+    if not pdf_path.exists():
+
+        raise IOError(
+            f"PDF was not created: {pdf_path}"
+        )
+
+    # ------------------------------------------
+    # Delete DOCX ONLY AFTER PDF SUCCESS
+    # ------------------------------------------
+
+    try:
 
         docx_path.unlink()
 
-    # --------------------------------------
+    except Exception as e:
+
+        print(
+            "DOCX DELETE WARNING:",
+            repr(e)
+        )
+
+    # ------------------------------------------
     # Save values
-    # --------------------------------------
+    # ------------------------------------------
 
     save_old_values(
         salutation,
@@ -995,9 +1230,9 @@ def generate_letter(
     return pdf_path
 
 
-# ==========================================
+# ============================================================
 # MERGE PDF
-# ==========================================
+# ============================================================
 
 def merge_pdfs(
     cv_path,
@@ -1006,9 +1241,34 @@ def merge_pdfs(
     output_path
 ):
 
-    cv_path = Path(cv_path)
-    cover_path = Path(cover_path)
-    output_path = Path(output_path)
+    cv_path = Path(
+        cv_path
+    ).resolve()
+
+    cover_path = Path(
+        cover_path
+    ).resolve()
+
+    output_path = Path(
+        output_path
+    ).resolve()
+
+    if not cv_path.exists():
+
+        raise FileNotFoundError(
+            f"CV not found: {cv_path}"
+        )
+
+    if not cover_path.exists():
+
+        raise FileNotFoundError(
+            f"Cover PDF not found: {cover_path}"
+        )
+
+    output_path.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
     main_reader = PdfReader(
         str(cv_path)
@@ -1017,6 +1277,12 @@ def merge_pdfs(
     insert_reader = PdfReader(
         str(cover_path)
     )
+
+    if len(insert_reader.pages) == 0:
+
+        raise ValueError(
+            "Cover PDF contains no pages."
+        )
 
     writer = PdfWriter()
 
@@ -1049,31 +1315,52 @@ def merge_pdfs(
 
         writer.write(f)
 
+    if not output_path.exists():
 
-# ==========================================
+        raise IOError(
+            f"Final PDF was not created: {output_path}"
+        )
+
+
+# ============================================================
 # PATH
-# ==========================================
+# ============================================================
 
 def safe_path(p):
 
-    if p and isinstance(p, str):
+    if p and isinstance(
+        p,
+        str
+    ):
 
-        return Path(p)
+        return Path(
+            p
+        ).resolve()
 
     return p
 
 
-# ==========================================
+# ============================================================
 # LOAD SAVED VALUES
-# ==========================================
+# ============================================================
 
 def load_module(
     cmp,
     saved_path
 ):
 
+    saved_path = Path(
+        saved_path
+    ).resolve()
+
+    if not saved_path.exists():
+
+        raise FileNotFoundError(
+            f"Saved values not found: {saved_path}"
+        )
+
     module_name = (
-        f"vals_{cmp}"
+        f"vals_{cmp}_{time.time_ns()}"
     )
 
     spec = (
@@ -1084,7 +1371,10 @@ def load_module(
         )
     )
 
-    if spec is None or spec.loader is None:
+    if (
+        spec is None
+        or spec.loader is None
+    ):
 
         raise ImportError(
             f"Could not load {saved_path}"
@@ -1106,9 +1396,9 @@ def load_module(
     return module
 
 
-# ==========================================
+# ============================================================
 # GMAIL
-# ==========================================
+# ============================================================
 
 def gmail_send(
     to_email,
@@ -1118,6 +1408,18 @@ def gmail_send(
     file2_path=None,
     file3_path=None
 ):
+
+    if not GMAIL_USER:
+
+        raise RuntimeError(
+            "GMAIL_USER is not configured."
+        )
+
+    if not GMAIL_PASS:
+
+        raise RuntimeError(
+            "GMAIL_PASS is not configured."
+        )
 
     SMTP_SERVER = "smtp.gmail.com"
     SMTP_PORT = 587
@@ -1136,9 +1438,11 @@ def gmail_send(
     )
 
     for fpath in [
+
         safe_path(file1_path),
         safe_path(file2_path),
-        safe_path(file3_path)
+        safe_path(file3_path),
+
     ]:
 
         if not fpath:
@@ -1170,11 +1474,14 @@ def gmail_send(
             f'attachment; filename="{fpath.name}"'
         )
 
-        message.attach(part)
+        message.attach(
+            part
+        )
 
     server = smtplib.SMTP(
         SMTP_SERVER,
-        SMTP_PORT
+        SMTP_PORT,
+        timeout=60
     )
 
     try:
@@ -1197,10 +1504,9 @@ def gmail_send(
         server.quit()
 
 
-# ==========================================
-# BACKGROUND THREAD
-# GENERATE
-# ==========================================
+# ============================================================
+# GENERATION THREAD
+# ============================================================
 
 def generate_thread(
     excel_path,
@@ -1216,23 +1522,54 @@ def generate_thread(
 
         excel_path = Path(
             excel_path
-        )
+        ).resolve()
 
         cv_path = Path(
             cv_path
-        )
+        ).resolve()
 
         template_path = Path(
             template_path
-        )
+        ).resolve()
 
-        other_path = Path(
-            other_path
-        ) if other_path else None
+        other_path = (
+            Path(other_path).resolve()
+            if other_path
+            else None
+        )
 
         base_dir = Path(
             base_dir
-        )
+        ).resolve()
+
+        # ------------------------------------------
+        # Verify
+        # ------------------------------------------
+
+        required = [
+
+            excel_path,
+            cv_path,
+            template_path,
+
+        ]
+
+        if other_path:
+            required.append(
+                other_path
+            )
+
+        for path in required:
+
+            if not path.exists():
+
+                raise FileNotFoundError(
+                    f"Required file not found: {path}"
+                )
+
+        # ------------------------------------------
+        # State
+        # ------------------------------------------
 
         with state_lock:
 
@@ -1260,9 +1597,9 @@ def generate_thread(
                 else None
             )
 
-        # --------------------------------------
-        # Save Excel local copy
-        # --------------------------------------
+        # ------------------------------------------
+        # Excel local copy
+        # ------------------------------------------
 
         save_excel_to_db(
             excel_path,
@@ -1270,9 +1607,9 @@ def generate_thread(
             bewerbungsname
         )
 
-        # --------------------------------------
+        # ------------------------------------------
         # Read Excel
-        # --------------------------------------
+        # ------------------------------------------
 
         df = pd.read_excel(
             str(excel_path)
@@ -1285,23 +1622,19 @@ def generate_thread(
             state["gen_total"] = total
             state["total_companies"] = total
 
-        # --------------------------------------
-        # No companies
-        # --------------------------------------
+        # ------------------------------------------
+        # Empty Excel
+        # ------------------------------------------
 
         if total == 0:
 
-            with state_lock:
+            raise ValueError(
+                "Die Excel-Datei enthält keine Unternehmen."
+            )
 
-                state["generating"] = False
-                state["generated"] = True
-                state["gen_progress"] = 1
-
-            return
-
-        # --------------------------------------
+        # ------------------------------------------
         # Generate
-        # --------------------------------------
+        # ------------------------------------------
 
         for i, row in df.iterrows():
 
@@ -1352,14 +1685,17 @@ def generate_thread(
                     status="ok"
                 )
 
+                # حذف Cover Letter المؤقت
                 if cover_pdf.exists():
 
                     cover_pdf.unlink()
 
                 entry = {
+
                     "num": cmp_num,
                     "firma": firma,
-                    "status": "ok"
+                    "status": "ok",
+
                 }
 
             except Exception as e:
@@ -1378,19 +1714,28 @@ def generate_thread(
                     error_msg=str(e)
                 )
 
-                with open(
-                    out_dir / "skip.txt",
-                    "w",
-                    encoding="utf-8"
-                ) as f:
+                try:
 
-                    f.write("skip")
+                    with open(
+                        out_dir / "skip.txt",
+                        "w",
+                        encoding="utf-8"
+                    ) as f:
+
+                        f.write(
+                            str(e)
+                        )
+
+                except Exception:
+                    pass
 
                 entry = {
+
                     "num": cmp_num,
                     "firma": firma,
                     "status": "error",
-                    "error": str(e)
+                    "error": str(e),
+
                 }
 
             with state_lock:
@@ -1403,9 +1748,9 @@ def generate_thread(
                     cmp_num / total
                 )
 
-        # --------------------------------------
+        # ------------------------------------------
         # Complete
-        # --------------------------------------
+        # ------------------------------------------
 
         with state_lock:
 
@@ -1433,17 +1778,18 @@ def generate_thread(
             state["generated"] = False
 
             state["gen_log"].append({
+
                 "num": 0,
                 "firma": "",
                 "status": "fatal",
-                "error": str(e)
+                "error": str(e),
+
             })
 
 
-# ==========================================
-# BACKGROUND THREAD
-# SEND
-# ==========================================
+# ============================================================
+# SEND THREAD
+# ============================================================
 
 def send_thread(
     letter_path,
@@ -1457,10 +1803,10 @@ def send_thread(
 
         letter_path = Path(
             letter_path
-        )
+        ).resolve()
 
         extra_path = (
-            Path(extra_path)
+            Path(extra_path).resolve()
             if extra_path
             else None
         )
@@ -1481,7 +1827,7 @@ def send_thread(
 
             base_dir = Path(
                 state["base_dir"]
-            )
+            ).resolve()
 
             bewerbungsname = (
                 state["bewerbungsname"]
@@ -1497,9 +1843,9 @@ def send_thread(
                 else None
             )
 
-        # --------------------------------------
+        # ------------------------------------------
         # Check template
-        # --------------------------------------
+        # ------------------------------------------
 
         if not letter_path.exists():
 
@@ -1507,18 +1853,20 @@ def send_thread(
                 f"Email template not found: {letter_path}"
             )
 
-        # --------------------------------------
+        # ------------------------------------------
         # Read template
-        # --------------------------------------
+        # ------------------------------------------
 
         doc = Document(
             str(letter_path)
         )
 
         lines = [
+
             p.text.strip()
             for p in doc.paragraphs
             if p.text.strip()
+
         ]
 
         if not lines:
@@ -1533,9 +1881,9 @@ def send_thread(
             lines[1:]
         )
 
-        # --------------------------------------
-        # Scheduled
-        # --------------------------------------
+        # ------------------------------------------
+        # Schedule
+        # ------------------------------------------
 
         if scheduled_dt:
 
@@ -1569,9 +1917,9 @@ def send_thread(
                     "waiting_scheduled"
                 ] = False
 
-        # --------------------------------------
+        # ------------------------------------------
         # Send
-        # --------------------------------------
+        # ------------------------------------------
 
         for cmp in range(
             start_num,
@@ -1605,7 +1953,6 @@ def send_thread(
                 email = m.old_email
 
             except Exception:
-
                 pass
 
             # ----------------------------------
@@ -1630,9 +1977,11 @@ def send_thread(
                     state[
                         "send_log"
                     ].append({
+
                         "num": cmp,
                         "email": email,
-                        "status": "skip"
+                        "status": "skip",
+
                     })
 
                     state[
@@ -1655,6 +2004,7 @@ def send_thread(
                 email = m.old_email
                 gender = m.old_salutation
                 person = m.old_person
+
                 adresse_3 = (
                     m.old_adresse_3.strip()
                 )
@@ -1666,27 +2016,34 @@ def send_thread(
                     )
 
                 letter = (
+
                     message_template
+
                     .replace(
                         "{person}",
                         person
                     )
+
                     .replace(
                         "{gender}",
                         gender
                     )
+
                     .replace(
                         "{adre}",
                         adresse_3
                     )
+
                     .replace(
                         "{space}",
                         "\n"
                     )
+
                     .replace(
                         "{2space}",
                         "\n\n"
                     )
+
                 )
 
                 with state_lock:
@@ -1703,10 +2060,13 @@ def send_thread(
                     email,
                     subject,
                     letter,
+
                     str(pdf_path)
                     if pdf_path.exists()
                     else None,
+
                     current_extra,
+
                     other_path
                 )
 
@@ -1748,9 +2108,11 @@ def send_thread(
                     state[
                         "send_log"
                     ].append({
+
                         "num": cmp,
                         "email": email,
-                        "status": "sent"
+                        "status": "sent",
+
                     })
 
                     state[
@@ -1784,9 +2146,12 @@ def send_thread(
                         state[
                             "send_log"
                         ].append({
+
                             "num": cmp,
                             "email": email,
-                            "status": "network_error"
+                            "status":
+                                "network_error",
+
                         })
 
                         state[
@@ -1819,18 +2184,20 @@ def send_thread(
                         state[
                             "send_log"
                         ].append({
+
                             "num": cmp,
                             "email": email,
-                            "status": "error"
+                            "status": "error",
+
                         })
 
                         state[
                             "send_progress"
                         ] = cmp / total
 
-        # --------------------------------------
+        # ------------------------------------------
         # Complete
-        # --------------------------------------
+        # ------------------------------------------
 
         with state_lock:
 
@@ -1854,16 +2221,18 @@ def send_thread(
             state[
                 "send_log"
             ].append({
+
                 "num": 0,
                 "email": "",
                 "status": "fatal",
-                "error": str(e)
+                "error": str(e),
+
             })
 
 
-# ==========================================
-# ROUTES
-# ==========================================
+# ============================================================
+# INDEX
+# ============================================================
 
 @app.route("/")
 def index():
@@ -1873,9 +2242,9 @@ def index():
     )
 
 
-# ==========================================
+# ============================================================
 # LOGIN
-# ==========================================
+# ============================================================
 
 @app.route(
     "/api/login",
@@ -1898,11 +2267,13 @@ def login():
             state["is_admin"] = True
 
         return jsonify({
+
             "success": True,
-            "is_admin": True
+            "is_admin": True,
+
         })
 
-    elif code == ACCESS_CODE:
+    if code == ACCESS_CODE:
 
         with state_lock:
 
@@ -1910,19 +2281,23 @@ def login():
             state["is_admin"] = False
 
         return jsonify({
+
             "success": True,
-            "is_admin": False
+            "is_admin": False,
+
         })
 
     return jsonify({
+
         "success": False,
-        "error": "Falscher Code"
+        "error": "Falscher Code",
+
     }), 401
 
 
-# ==========================================
+# ============================================================
 # STATE
-# ==========================================
+# ============================================================
 
 @app.route(
     "/api/state",
@@ -1931,6 +2306,10 @@ def login():
 def get_state():
 
     with state_lock:
+
+        scheduled = state.get(
+            "scheduled_dt"
+        )
 
         return jsonify({
 
@@ -1962,23 +2341,23 @@ def get_state():
                 state["total_companies"],
 
             "waiting_scheduled":
-                state.get(
-                    "waiting_scheduled",
-                    False
-                ),
+                state[
+                    "waiting_scheduled"
+                ],
 
             "scheduled_dt":
                 (
-                    state["scheduled_dt"].isoformat()
-                    if state.get("scheduled_dt")
+                    scheduled.isoformat()
+                    if scheduled
                     else None
                 ),
+
         })
 
 
-# ==========================================
+# ============================================================
 # GENERATE
-# ==========================================
+# ============================================================
 
 @app.route(
     "/api/generate",
@@ -1991,18 +2370,25 @@ def generate():
         if not state["logged_in"]:
 
             return jsonify({
-                "error": "Not logged in"
+
+                "success": False,
+                "error": "Not logged in",
+
             }), 403
 
         if state["generating"]:
 
             return jsonify({
-                "error": "Generierung läuft bereits"
+
+                "success": False,
+                "error":
+                    "Generierung läuft bereits",
+
             }), 400
 
-    # --------------------------------------
+    # ------------------------------------------
     # Receive files
-    # --------------------------------------
+    # ------------------------------------------
 
     excel_file = request.files.get(
         "excel"
@@ -2020,33 +2406,50 @@ def generate():
         "other"
     )
 
-    # --------------------------------------
+    # ------------------------------------------
     # Validate
-    # --------------------------------------
+    # ------------------------------------------
 
     if not excel_file:
+
         return jsonify({
-            "error": "Excel fehlt"
+
+            "success": False,
+            "error": "Excel fehlt",
+
         }), 400
 
     if not cv_file:
+
         return jsonify({
-            "error": "Lebenslauf fehlt"
+
+            "success": False,
+            "error": "Lebenslauf fehlt",
+
         }), 400
 
     if not template_file:
+
         return jsonify({
-            "error": "Anschreiben fehlt"
+
+            "success": False,
+            "error": "Anschreiben fehlt",
+
         }), 400
 
     if not other_file:
+
         return jsonify({
-            "error": "Zeugnisse und Zertifikate fehlen"
+
+            "success": False,
+            "error":
+                "Zeugnisse und Zertifikate fehlen",
+
         }), 400
 
-    # --------------------------------------
+    # ------------------------------------------
     # Position
-    # --------------------------------------
+    # ------------------------------------------
 
     try:
 
@@ -2065,9 +2468,9 @@ def generate():
 
         anschreiben_pos = 2
 
-    # --------------------------------------
+    # ------------------------------------------
     # Application name
-    # --------------------------------------
+    # ------------------------------------------
 
     bewerbungsname = (
         request.form.get(
@@ -2080,10 +2483,6 @@ def generate():
 
         bewerbungsname = "Bewerbung"
 
-    # --------------------------------------
-    # Safe directory name
-    # --------------------------------------
-
     safe_bewerbungsname = secure_filename(
         bewerbungsname
     )
@@ -2092,14 +2491,14 @@ def generate():
 
         safe_bewerbungsname = "Bewerbung"
 
-    # --------------------------------------
-    # Create directory
-    # --------------------------------------
+    # ------------------------------------------
+    # Directory
+    # ------------------------------------------
 
     base_dir = (
         APPLICATIONS_DIR /
         safe_bewerbungsname
-    )
+    ).resolve()
 
     try:
 
@@ -2114,11 +2513,9 @@ def generate():
             exist_ok=True
         )
 
-        # ----------------------------------
-        # IMPORTANT:
-        # SAVE FILES INSIDE REQUEST
-        # BEFORE THREAD
-        # ----------------------------------
+        # مهم:
+        # حفظ الملفات هنا داخل request
+        # وليس داخل background thread
 
         (
             excel_path,
@@ -2126,10 +2523,12 @@ def generate():
             template_path,
             other_path
         ) = save_generate_files(
+
             excel_file,
             cv_file,
             template_file,
             other_file,
+
             base_dir
         )
 
@@ -2141,16 +2540,18 @@ def generate():
         )
 
         return jsonify({
+
             "success": False,
-            "error": (
+
+            "error":
                 "Fehler beim Speichern der Dateien: "
-                + str(e)
-            )
+                + str(e),
+
         }), 500
 
-    # --------------------------------------
-    # Update state
-    # --------------------------------------
+    # ------------------------------------------
+    # State
+    # ------------------------------------------
 
     with state_lock:
 
@@ -2159,7 +2560,6 @@ def generate():
 
         state["gen_progress"] = 0
         state["gen_log"] = []
-
         state["gen_total"] = 0
 
         state["base_dir"] = str(
@@ -2180,48 +2580,58 @@ def generate():
 
         state["extra"] = None
 
-    # --------------------------------------
+    # ------------------------------------------
     # Save Excel copy
-    # --------------------------------------
+    # ------------------------------------------
 
     save_excel_to_db(
+
         excel_path,
+
         excel_file.filename,
+
         safe_bewerbungsname
+
     )
 
-    # --------------------------------------
-    # START THREAD
-    #
-    # ONLY PATHS ARE SENT
-    # NO request.files
-    # --------------------------------------
+    # ------------------------------------------
+    # Thread
+    # ------------------------------------------
 
     thread = threading.Thread(
+
         target=generate_thread,
+
         args=(
+
             str(excel_path),
             str(cv_path),
             str(template_path),
             str(other_path),
-            anschreiben_pos,
-            safe_bewerbungsname,
-            str(base_dir)
-        )
-    )
 
-    thread.daemon = True
+            anschreiben_pos,
+
+            safe_bewerbungsname,
+
+            str(base_dir),
+
+        ),
+
+        daemon=True
+    )
 
     thread.start()
 
     return jsonify({
+
         "success": True
-    })
+
+    }), 200
 
 
-# ==========================================
+# ============================================================
 # GENERATE STATUS
-# ==========================================
+# ============================================================
 
 @app.route(
     "/api/generate/status",
@@ -2251,9 +2661,9 @@ def generate_status():
         })
 
 
-# ==========================================
+# ============================================================
 # SEND
-# ==========================================
+# ============================================================
 
 @app.route(
     "/api/send",
@@ -2266,21 +2676,30 @@ def send():
         if not state["logged_in"]:
 
             return jsonify({
-                "error": "Not logged in"
+
+                "success": False,
+                "error": "Not logged in",
+
             }), 403
 
         if not state["generated"]:
 
             return jsonify({
+
+                "success": False,
                 "error":
-                "Bitte zuerst Anschreiben generieren"
+                    "Bitte zuerst Anschreiben generieren",
+
             }), 400
 
         if state["sending"]:
 
             return jsonify({
+
+                "success": False,
                 "error":
-                "Senden läuft bereits"
+                    "Senden läuft bereits",
+
             }), 400
 
     letter_file = request.files.get(
@@ -2294,9 +2713,16 @@ def send():
     if not letter_file:
 
         return jsonify({
+
+            "success": False,
             "error":
-            "Email Template erforderlich"
+                "Email Template erforderlich",
+
         }), 400
+
+    # ------------------------------------------
+    # Delay
+    # ------------------------------------------
 
     try:
 
@@ -2311,6 +2737,13 @@ def send():
 
         delay = 10
 
+    if delay < 0:
+        delay = 0
+
+    # ------------------------------------------
+    # Start
+    # ------------------------------------------
+
     try:
 
         start_num = int(
@@ -2323,6 +2756,13 @@ def send():
     except Exception:
 
         start_num = 1
+
+    if start_num < 1:
+        start_num = 1
+
+    # ------------------------------------------
+    # Schedule
+    # ------------------------------------------
 
     schedule_str = request.form.get(
         "scheduled_dt",
@@ -2348,49 +2788,78 @@ def send():
             ):
 
                 return jsonify({
+
+                    "success": False,
                     "error":
-                    "Die gewählte Zeit liegt in der Vergangenheit"
+                        "Die gewählte Zeit liegt "
+                        "in der Vergangenheit",
+
                 }), 400
 
         except Exception:
 
             return jsonify({
+
+                "success": False,
                 "error":
-                "Ungültiges Datum/Zeit Format"
+                    "Ungültiges Datum/Zeit Format",
+
             }), 400
 
-    # --------------------------------------
-    # SAVE EMAIL TEMPLATE BEFORE THREAD
-    # --------------------------------------
+    # ------------------------------------------
+    # Base dir
+    # ------------------------------------------
 
     with state_lock:
 
+        if not state["base_dir"]:
+
+            return jsonify({
+
+                "success": False,
+                "error":
+                    "Application folder not found",
+
+            }), 400
+
         base_dir = Path(
             state["base_dir"]
-        )
+        ).resolve()
+
+    # ------------------------------------------
+    # Save email template
+    # ------------------------------------------
 
     try:
 
         letter_path = save_upload(
+
             letter_file,
+
             base_dir,
+
             "Email_Template.docx"
+
         )
 
-        if extra_file and extra_file.filename:
+        if (
+            extra_file
+            and extra_file.filename
+        ):
 
-            extra_path = save_extra_file(
+            extra_path = save_upload(
+
                 extra_file,
-                base_dir
+
+                base_dir,
+
+                "Anhang.pdf"
+
             )
 
         else:
 
             extra_path = None
-
-            with state_lock:
-
-                state["extra"] = None
 
     except Exception as e:
 
@@ -2400,20 +2869,25 @@ def send():
         )
 
         return jsonify({
+
             "success": False,
+
             "error":
-            "Fehler beim Speichern der Email-Dateien: "
-            + str(e)
+                "Fehler beim Speichern "
+                "der Email-Dateien: "
+                + str(e),
+
         }), 500
 
-    # --------------------------------------
+    # ------------------------------------------
     # State
-    # --------------------------------------
+    # ------------------------------------------
 
     with state_lock:
 
         state["sending"] = True
         state["send_done"] = False
+
         state["interrupted_at"] = None
 
         state["send_progress"] = 0
@@ -2426,36 +2900,51 @@ def send():
 
         state["network_error"] = False
 
-    # --------------------------------------
-    # Start thread
-    # ONLY PATHS
-    # --------------------------------------
-
-    thread = threading.Thread(
-        target=send_thread,
-        args=(
-            str(letter_path),
-            delay,
-            start_num,
-            scheduled_dt,
+        state["extra"] = (
             str(extra_path)
             if extra_path
             else None
         )
-    )
 
-    thread.daemon = True
+    # ------------------------------------------
+    # Thread
+    # ------------------------------------------
+
+    thread = threading.Thread(
+
+        target=send_thread,
+
+        args=(
+
+            str(letter_path),
+
+            delay,
+
+            start_num,
+
+            scheduled_dt,
+
+            str(extra_path)
+            if extra_path
+            else None,
+
+        ),
+
+        daemon=True
+    )
 
     thread.start()
 
     return jsonify({
+
         "success": True
-    })
+
+    }), 200
 
 
-# ==========================================
+# ============================================================
 # SEND STATUS
-# ==========================================
+# ============================================================
 
 @app.route(
     "/api/send/status",
@@ -2464,6 +2953,10 @@ def send():
 def send_status():
 
     with state_lock:
+
+        scheduled = state.get(
+            "scheduled_dt"
+        )
 
         return jsonify({
 
@@ -2486,15 +2979,12 @@ def send_status():
                 state["total_companies"],
 
             "waiting_scheduled":
-                state.get(
-                    "waiting_scheduled",
-                    False
-                ),
+                state["waiting_scheduled"],
 
             "scheduled_dt":
                 (
-                    state["scheduled_dt"].isoformat()
-                    if state.get("scheduled_dt")
+                    scheduled.isoformat()
+                    if scheduled
                     else None
                 ),
 
@@ -2504,9 +2994,9 @@ def send_status():
         })
 
 
-# ==========================================
+# ============================================================
 # RESUME SEND
-# ==========================================
+# ============================================================
 
 @app.route(
     "/api/send/resume",
@@ -2519,19 +3009,36 @@ def resume_send():
         if not state["logged_in"]:
 
             return jsonify({
-                "error": "Not logged in"
+
+                "success": False,
+                "error": "Not logged in",
+
             }), 403
+
+        if not state["base_dir"]:
+
+            return jsonify({
+
+                "success": False,
+                "error":
+                    "Application folder not found",
+
+            }), 400
 
         base_dir = Path(
             state["base_dir"]
-        )
+        ).resolve()
 
-        total = (
-            state["total_companies"]
-        )
+        total = state[
+            "total_companies"
+        ]
 
-        delay = (
-            state["delay"]
+        delay = state[
+            "delay"
+        ]
+
+        extra_path = state.get(
+            "extra"
         )
 
     data = request.json or {}
@@ -2553,41 +3060,55 @@ def resume_send():
 
         resume_from = 1
 
-    if total and resume_from > total:
+    if (
+        total
+        and resume_from > total
+    ):
 
         return jsonify({
+
+            "success": False,
             "error":
-            "Ungültige Startnummer"
+                "Ungültige Startnummer",
+
         }), 400
 
-    # --------------------------------------
-    # Find saved email template
-    # --------------------------------------
+    # ------------------------------------------
+    # Find email template
+    # ------------------------------------------
 
     letter_files = list(
         base_dir.glob(
-            "*.docx"
+            "Email_Template.docx"
         )
     )
 
     if not letter_files:
 
+        letter_files = list(
+            base_dir.glob(
+                "*.docx"
+            )
+        )
+
+    if not letter_files:
+
         return jsonify({
+
+            "success": False,
             "error":
-            "Email Template nicht gefunden"
+                "Email Template nicht gefunden",
+
         }), 400
 
-    letter_path = letter_files[0]
+    letter_path = (
+        letter_files[0]
+        .resolve()
+    )
 
-    # --------------------------------------
-    # Extra attachment
-    # --------------------------------------
-
-    with state_lock:
-
-        extra_path = state.get(
-            "extra"
-        )
+    # ------------------------------------------
+    # State
+    # ------------------------------------------
 
     with state_lock:
 
@@ -2602,33 +3123,43 @@ def resume_send():
         state["send_progress"] = 0
         state["send_log"] = []
 
-    # --------------------------------------
-    # Start with real PATH
-    # --------------------------------------
+    # ------------------------------------------
+    # Thread
+    # ------------------------------------------
 
     thread = threading.Thread(
-        target=send_thread,
-        args=(
-            str(letter_path),
-            delay,
-            resume_from,
-            None,
-            extra_path
-        )
-    )
 
-    thread.daemon = True
+        target=send_thread,
+
+        args=(
+
+            str(letter_path),
+
+            delay,
+
+            resume_from,
+
+            None,
+
+            extra_path,
+
+        ),
+
+        daemon=True
+    )
 
     thread.start()
 
     return jsonify({
+
         "success": True
+
     })
 
 
-# ==========================================
+# ============================================================
 # RESET
-# ==========================================
+# ============================================================
 
 @app.route(
     "/api/reset",
@@ -2639,13 +3170,15 @@ def reset():
     reset_state()
 
     return jsonify({
+
         "success": True
+
     })
 
 
-# ==========================================
+# ============================================================
 # DASHBOARD
-# ==========================================
+# ============================================================
 
 @app.route(
     "/api/dashboard",
@@ -2661,8 +3194,10 @@ def dashboard():
         ):
 
             return jsonify({
+
                 "error":
-                "Access denied"
+                    "Access denied"
+
             }), 403
 
     session_filter = request.args.get(
@@ -2674,6 +3209,8 @@ def dashboard():
         "hours",
         type=int
     )
+
+    init_db()
 
     conn = get_db()
 
@@ -2688,10 +3225,12 @@ def dashboard():
     if hours_filter:
 
         cutoff = (
-            datetime.datetime.utcnow()
+
+            utc_now()
             - datetime.timedelta(
                 hours=hours_filter
             )
+
         ).strftime(
             "%Y-%m-%d %H:%M:%S"
         )
@@ -2725,78 +3264,106 @@ def dashboard():
 
     conn.close()
 
-    # --------------------------------------
+    # ------------------------------------------
     # Stats
-    # --------------------------------------
+    # ------------------------------------------
 
     sent_n = sum(
+
         1
         for r in rows
         if r["event_type"] == "sent"
+
     )
 
     skip_n = sum(
+
         1
         for r in rows
         if r["event_type"] == "skip"
+
     )
 
     error_n = sum(
+
         1
         for r in rows
         if r["event_type"]
         in (
             "error",
-            "network_error"
+            "network_error",
+            "generation_fatal",
         )
+
     )
 
     gen_ok = sum(
+
         1
         for r in rows
+
         if (
+
             r["event_type"]
             == "generated"
-            and r["status"]
+
+            and
+
+            r["status"]
             == "ok"
+
         )
+
     )
 
-    # --------------------------------------
+    # ------------------------------------------
     # Sessions
-    # --------------------------------------
+    # ------------------------------------------
 
     sessions = list(
         set(
+
             r["session_name"]
+
             for r in rows
+
             if r["session_name"]
+
         )
     )
 
-    # --------------------------------------
+    # ------------------------------------------
     # Companies
-    # --------------------------------------
+    # ------------------------------------------
 
     companies = defaultdict(
+
         lambda: {
+
             "session": "",
             "generiert": "—",
             "gesendet": "Nein",
             "email_firma": "",
             "fehler": "—",
-            "zeit": ""
+            "zeit": "",
+
         }
     )
 
     for r in sorted(
+
         rows,
-        key=lambda x: x["created_at"]
+
+        key=lambda x:
+            x["created_at"]
+
     ):
 
         key = (
+
             r["session_name"],
-            r["company_num"]
+            r["company_num"],
+
         )
 
         e = companies[key]
@@ -2809,9 +3376,13 @@ def dashboard():
         if r["event_type"] == "generated":
 
             e["generiert"] = (
+
                 "Ja"
+
                 if r["status"] == "ok"
+
                 else "Nein"
+
             )
 
             e["email_firma"] = (
@@ -2820,9 +3391,13 @@ def dashboard():
             )
 
             e["zeit"] = (
+
                 r["created_at"][:16]
+
                 if r["created_at"]
+
                 else ""
+
             )
 
         if r["event_type"] == "sent":
@@ -2830,14 +3405,20 @@ def dashboard():
             e["gesendet"] = "Ja"
 
             e["email_firma"] = (
+
                 r["email"]
                 or e["email_firma"]
+
             )
 
             e["zeit"] = (
+
                 r["created_at"][:16]
+
                 if r["created_at"]
+
                 else ""
+
             )
 
         if r["event_type"] == "skip":
@@ -2845,40 +3426,52 @@ def dashboard():
             e["gesendet"] = "Nein"
 
         if r["event_type"] in (
+
             "error",
-            "network_error"
+            "network_error",
+            "generation_fatal",
+
         ):
 
             e["fehler"] = "Ja"
 
-    # --------------------------------------
-    # Session filter
-    # --------------------------------------
+    # ------------------------------------------
+    # Filter
+    # ------------------------------------------
 
     if session_filter != "Alle":
 
         companies = {
+
             k: v
+
             for k, v
             in companies.items()
+
             if k[0] == session_filter
+
         }
 
-    # --------------------------------------
+    # ------------------------------------------
     # Company list
-    # --------------------------------------
+    # ------------------------------------------
 
     company_list = []
 
     for (
+
         session,
         cmp_num
+
     ), e in sorted(
+
         companies.items(),
+
         key=lambda x: (
             x[0][1]
             or 0
         )
+
     ):
 
         company_list.append({
@@ -2903,6 +3496,7 @@ def dashboard():
 
             "zeit":
                 e["zeit"],
+
         })
 
     return jsonify({
@@ -2932,9 +3526,9 @@ def dashboard():
     })
 
 
-# ==========================================
+# ============================================================
 # DASHBOARD EXCELS
-# ==========================================
+# ============================================================
 
 @app.route(
     "/api/dashboard/excels",
@@ -2950,11 +3544,15 @@ def dashboard_excels():
         ):
 
             return jsonify({
+
                 "error":
-                "Access denied"
+                    "Access denied"
+
             }), 403
 
     clean_old_excels()
+
+    init_db()
 
     conn = get_db()
 
@@ -2979,9 +3577,14 @@ def dashboard_excels():
     for r in rows:
 
         if (
+
             session_filter != "Alle"
-            and r["session_name"]
+
+            and
+
+            r["session_name"]
             != session_filter
+
         ):
 
             continue
@@ -2997,20 +3600,27 @@ def dashboard_excels():
             "session_name":
                 r["session_name"],
 
-            "uploaded_at":
-                (
-                    r["uploaded_at"][:16]
-                    if r["uploaded_at"]
-                    else ""
-                ),
+            "uploaded_at": (
+
+                r["uploaded_at"][:16]
+
+                if r["uploaded_at"]
+
+                else ""
+
+            ),
 
         })
 
     all_sessions = list(
         set(
+
             r["session_name"]
+
             for r in rows
+
             if r["session_name"]
+
         )
     )
 
@@ -3020,14 +3630,14 @@ def dashboard_excels():
             files,
 
         "sessions":
-            all_sessions
+            all_sessions,
 
     })
 
 
-# ==========================================
+# ============================================================
 # DOWNLOAD EXCEL
-# ==========================================
+# ============================================================
 
 @app.route(
     "/api/dashboard/excel/download/<int:file_id>"
@@ -3042,9 +3652,13 @@ def download_excel(file_id):
         ):
 
             return jsonify({
+
                 "error":
-                "Access denied"
+                    "Access denied"
+
             }), 403
+
+    init_db()
 
     conn = get_db()
 
@@ -3062,50 +3676,105 @@ def download_excel(file_id):
     if not row:
 
         return jsonify({
+
             "error":
-            "File not found"
+                "File not found"
+
         }), 404
 
     path = Path(
         row["storage_path"]
-    )
+    ).resolve()
 
     if not path.exists():
 
         return jsonify({
+
             "error":
-            "File no longer exists"
+                "File no longer exists"
+
         }), 404
 
     return send_file(
+
         str(path),
+
         as_attachment=True,
-        download_name=row["filename"]
+
+        download_name=
+            row["filename"]
+
     )
 
 
-# ==========================================
+# ============================================================
 # ERROR HANDLER
-# ==========================================
+# ============================================================
 
 @app.errorhandler(413)
 def request_entity_too_large(error):
 
     return jsonify({
+
         "success": False,
+
         "error":
-        "Die hochgeladenen Dateien überschreiten das erlaubte Limit von 100 MB."
+            "File upload is too large."
+
     }), 413
 
 
-# ==========================================
-# MAIN
-# ==========================================
+# ============================================================
+# RUN
+# ============================================================
 
 if __name__ == "__main__":
+
+    print()
+    print("=" * 60)
+    print("Bewerber Flask")
+    print("=" * 60)
+    print(
+        "BASE_DIR:",
+        BASE_DIR
+    )
+    print(
+        "DATA_DIR:",
+        DATA_DIR
+    )
+    print(
+        "APPLICATIONS_DIR:",
+        APPLICATIONS_DIR
+    )
+    print(
+        "EXCELS_DIR:",
+        EXCELS_DIR
+    )
+    print(
+        "DATABASE:",
+        LOGS_DB
+    )
+
+    try:
+
+        print(
+            "LibreOffice:",
+            get_libreoffice()
+        )
+
+    except Exception as e:
+
+        print(
+            "LibreOffice WARNING:",
+            e
+        )
+
+    print("=" * 60)
+    print()
 
     app.run(
         host="0.0.0.0",
         port=5000,
-        debug=True
+        debug=False,
+        threaded=True
     )
