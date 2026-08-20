@@ -195,11 +195,6 @@ state = {
     "bewerbungsname": None,
     "total_companies": 0,
     
-    # Direct send mode
-    "direct_mode": False,
-    "direct_emails": [],
-    "direct_letter_path": None,
-    "direct_pdf_path": None,
 
     "anschreiben_pos": 2,
 
@@ -208,6 +203,12 @@ state = {
 
     "waiting_scheduled": False,
     "network_error": False,
+    
+    "direct_mode": False,
+    "direct_emails": [],
+    "direct_letter_path": None,
+    "direct_pdf_path": None,
+    
 }
 
 
