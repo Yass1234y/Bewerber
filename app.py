@@ -2724,6 +2724,369 @@ def generate_status():
                 state["gen_total"],
 
         })
+        
+# ============================================================
+# IMPORT GENERATED FILES (ZIP)
+# ============================================================
+
+@app.route(
+    "/api/generate/import",
+    methods=["POST"]
+)
+def import_generated():
+
+    with state_lock:
+
+        if not state["logged_in"]:
+
+            return jsonify({
+
+                "success": False,
+                "error": "Not logged in",
+
+            }), 403
+
+        if state["generating"] or state["sending"]:
+
+            return jsonify({
+
+                "success": False,
+                "error": "Es läuft bereits ein Prozess",
+
+            }), 400
+
+    # ------------------------------------------
+    # Receive ZIP
+    # ------------------------------------------
+
+    zip_file = request.files.get(
+        "zip"
+    )
+
+    if not zip_file:
+
+        return jsonify({
+
+            "success": False,
+            "error": "ZIP Datei fehlt",
+
+        }), 400
+
+    # ------------------------------------------
+    # Temp extraction dir
+    # ------------------------------------------
+
+    temp_dir = (
+
+        APPLICATIONS_DIR
+        / f"temp_import_{int(time.time())}"
+
+    )
+
+    temp_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    safe_bewerbungsname = "Bewerbung"
+    total_companies = 0
+
+    try:
+
+        # ----------------------------------
+        # Save ZIP
+        # ----------------------------------
+
+        temp_zip_path = save_upload(
+
+            zip_file,
+            temp_dir,
+            "import.zip"
+
+        )
+
+        # ----------------------------------
+        # Extract
+        # ----------------------------------
+
+        with zipfile.ZipFile(
+
+            str(temp_zip_path),
+            "r"
+
+        ) as zipf:
+
+            zipf.extractall(
+                str(temp_dir)
+            )
+
+        # ----------------------------------
+        # Find root folder inside ZIP
+        # ----------------------------------
+
+        root_folder = None
+
+        for item in temp_dir.iterdir():
+
+            if item.is_dir() and item.name != "__MACOSX":
+
+                root_folder = item
+                break
+
+        if not root_folder:
+
+            # Files directly in temp_dir
+            root_folder = temp_dir
+
+        bewerbungsname = root_folder.name
+
+        safe_bewerbungsname = secure_filename(
+            bewerbungsname
+        )
+
+        if not safe_bewerbungsname:
+
+            safe_bewerbungsname = "Bewerbung"
+
+        # ----------------------------------
+        # Target dir
+        # ----------------------------------
+
+        target_dir = (
+
+            APPLICATIONS_DIR
+            / safe_bewerbungsname
+
+        ).resolve()
+
+        if target_dir.exists():
+
+            shutil.rmtree(
+                str(target_dir)
+            )
+
+        # ----------------------------------
+        # Move extracted to target
+        # ----------------------------------
+
+        if root_folder != temp_dir:
+
+            shutil.move(
+
+                str(root_folder),
+                str(target_dir)
+
+            )
+
+        else:
+
+            target_dir.mkdir(
+                parents=True,
+                exist_ok=True
+            )
+
+            for item in temp_dir.iterdir():
+
+                if item.name == "import.zip":
+                    continue
+
+                shutil.move(
+
+                    str(item),
+                    str(target_dir / item.name)
+
+                )
+
+        # ----------------------------------
+        # Read metadata if exists
+        # ----------------------------------
+
+        metadata_path = (
+            target_dir / "metadata.json"
+        )
+
+        metadata = None
+
+        if metadata_path.exists():
+
+            try:
+
+                with open(
+
+                    metadata_path,
+                    "r",
+                    encoding="utf-8"
+
+                ) as f:
+
+                    metadata = json.load(f)
+
+            except Exception:
+                pass
+
+        # ----------------------------------
+        # Count company folders
+        # ----------------------------------
+
+        company_folders = [
+
+            d for d in target_dir.iterdir()
+
+            if d.is_dir() and d.name.isdigit()
+
+        ]
+
+        total_companies = len(
+            company_folders
+        )
+
+        if total_companies == 0:
+
+            return jsonify({
+
+                "success": False,
+                "error":
+                    "Keine Unternehmen im ZIP gefunden",
+
+            }), 400
+
+        # ----------------------------------
+        # Find other file (Zeugnisse)
+        # ----------------------------------
+
+        other_path = None
+
+        if metadata and metadata.get("other_file"):
+
+            other_candidate = (
+
+                target_dir
+                / metadata["other_file"]
+
+            )
+
+            if other_candidate.exists():
+
+                other_path = str(
+                    other_candidate.resolve()
+                )
+
+        if not other_path:
+
+            pdf_files = list(
+                target_dir.glob("*.pdf")
+            )
+
+            # Exclude CV
+            cv_name = None
+
+            if metadata:
+                cv_name = metadata.get("cv_file")
+
+            if cv_name:
+
+                pdf_files = [
+
+                    f for f in pdf_files
+                    if f.name != cv_name
+
+                ]
+
+            else:
+
+                pdf_files = [
+
+                    f for f in pdf_files
+                    if "lebenslauf" not in f.name.lower()
+
+                ]
+
+            if pdf_files:
+
+                other_path = str(
+                    pdf_files[0].resolve()
+                )
+
+        # ----------------------------------
+        # Update state
+        # ----------------------------------
+
+        with state_lock:
+
+            state["generated"] = True
+            state["generating"] = False
+
+            state["base_dir"] = str(
+                target_dir
+            )
+
+            state["bewerbungsname"] = (
+                safe_bewerbungsname
+            )
+
+            state["total_companies"] = (
+                total_companies
+            )
+
+            state["other"] = other_path
+            state["extra"] = None
+
+            state["anschreiben_pos"] = 2
+
+            state["send_done"] = False
+            state["interrupted_at"] = None
+
+            state["send_progress"] = 0
+            state["send_log"] = []
+
+            state["gen_progress"] = 1
+            state["gen_log"] = []
+            state["gen_total"] = total_companies
+
+            state["scheduled_dt"] = None
+            state["waiting_scheduled"] = False
+            state["network_error"] = False
+
+    except Exception as e:
+
+        print(
+            "IMPORT ERROR:",
+            repr(e)
+        )
+
+        return jsonify({
+
+            "success": False,
+
+            "error":
+                "Fehler beim Import: "
+                + str(e),
+
+        }), 500
+
+    finally:
+
+        try:
+
+            shutil.rmtree(
+                str(temp_dir),
+                ignore_errors=True
+            )
+
+        except Exception:
+            pass
+
+    return jsonify({
+
+        "success": True,
+
+        "bewerbungsname":
+            safe_bewerbungsname,
+
+        "total_companies":
+            total_companies,
+
+    })
 
 # ============================================================
 # EXPORT GENERATED FILES
