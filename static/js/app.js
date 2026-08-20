@@ -15,6 +15,9 @@ const App = {
             letter: null,
             extra: null,
             zip: null,
+            direct_excel: null,
+            direct_letter: null,
+            direct_pdf: null,
         },
         generating: false,
         sending: false,
@@ -94,6 +97,17 @@ const App = {
 
         // Send
         document.getElementById('send-btn').addEventListener('click', () => this.startSend());
+        
+                // Send mode toggle (with/without generate)
+        document.getElementById('send-mode-toggle').addEventListener('change', (e) => this.toggleSendMode(e.target.checked));
+
+        // Direct file uploads
+        this.bindFileUpload('direct-excel-input', 'direct_excel');
+        this.bindFileUpload('direct-letter-input', 'direct_letter');
+        this.bindFileUpload('direct-pdf-input', 'direct_pdf');
+
+        // Direct send
+        document.getElementById('send-direct-btn').addEventListener('click', () => this.startDirectSend());
 
         // Send mode
         document.querySelectorAll('input[name="send-mode"]').forEach(radio => {
@@ -138,7 +152,7 @@ const App = {
                          this.state.files.template && this.state.files.other;
         genBtn.disabled = !genReady;
 
-        // Send button
+        // Send button (with generate)
         const sendBtn = document.getElementById('send-btn');
         const letterReady = this.state.files.letter;
         const scheduleMode = document.querySelector('input[name="send-mode"]:checked').value === 'schedule';
@@ -147,6 +161,13 @@ const App = {
             scheduleValid = this.validateSchedule();
         }
         sendBtn.disabled = !letterReady || !scheduleValid;
+
+        // Direct send button (without generate)
+        const directBtn = document.getElementById('send-direct-btn');
+        if (directBtn) {
+            const directReady = this.state.files.direct_excel && this.state.files.direct_letter && this.state.files.direct_pdf;
+            directBtn.disabled = !directReady || !scheduleValid;
+        }
 
         // Import button
         const importBtn = document.getElementById('import-btn');
@@ -379,26 +400,44 @@ const App = {
         } catch (e) {}
     },
 
-    updateSendPage() {
+        updateSendPage() {
         fetch('/api/send/status')
             .then(r => r.json())
             .then(data => {
+                // If direct_mode from backend, switch toggle
+                if (data.direct_mode) {
+                    document.getElementById('send-mode-toggle').checked = true;
+                    document.getElementById('send-label-with').classList.remove('active');
+                    document.getElementById('send-label-without').classList.add('active');
+                    document.getElementById('send-btn').classList.add('hidden');
+                    document.getElementById('send-direct-btn').classList.remove('hidden');
+                }
+
+                // 1. Send done → show success
                 if (data.send_done) {
                     document.getElementById('send-form').classList.add('hidden');
+                    document.getElementById('send-direct-form').classList.add('hidden');
+                    document.getElementById('send-config-section').classList.add('hidden');
                     document.getElementById('send-success').classList.remove('hidden');
                     return;
                 }
 
+                // 2. Interrupted → show interrupted card
                 if (data.interrupted_at) {
                     document.getElementById('send-form').classList.add('hidden');
+                    document.getElementById('send-direct-form').classList.add('hidden');
+                    document.getElementById('send-config-section').classList.add('hidden');
                     document.getElementById('send-interrupted').classList.remove('hidden');
                     document.getElementById('resume-num').value = data.interrupted_at;
                     document.getElementById('resume-num').max = data.total;
                     return;
                 }
 
+                // 3. Sending or waiting → show countdown/progress
                 if (data.sending || data.waiting_scheduled) {
                     document.getElementById('send-form').classList.add('hidden');
+                    document.getElementById('send-direct-form').classList.add('hidden');
+                    document.getElementById('send-config-section').classList.add('hidden');
                     if (data.waiting_scheduled) {
                         document.getElementById('schedule-countdown').classList.remove('hidden');
                         this.startCountdown(data.scheduled_dt);
@@ -409,20 +448,36 @@ const App = {
                     return;
                 }
 
-                // Check if generated
-                fetch('/api/state')
-                    .then(r => r.json())
-                    .then(stateData => {
-                        if (stateData.generated) {
-                            document.getElementById('send-warning').classList.add('hidden');
-                            document.getElementById('send-form').classList.remove('hidden');
-                            document.getElementById('send-info').textContent =
-                                `Folder: ${stateData.bewerbungsname} — Unternehmen: ${stateData.total_companies}`;
-                        } else {
-                            document.getElementById('send-warning').classList.remove('hidden');
-                            document.getElementById('send-form').classList.add('hidden');
-                        }
-                    });
+                // 4. Not sending → show appropriate form
+                const isDirect = document.getElementById('send-mode-toggle').checked;
+
+                if (isDirect) {
+                    // Without Generate mode → always show direct form
+                    document.getElementById('send-warning').classList.add('hidden');
+                    document.getElementById('send-form').classList.add('hidden');
+                    document.getElementById('send-direct-form').classList.remove('hidden');
+                    document.getElementById('send-config-section').classList.remove('hidden');
+                    document.getElementById('send-info').textContent = 'Direct Send Mode — Keine Generierung erforderlich';
+                } else {
+                    // With Generate mode → check if generated
+                    fetch('/api/state')
+                        .then(r => r.json())
+                        .then(stateData => {
+                            if (stateData.generated) {
+                                document.getElementById('send-warning').classList.add('hidden');
+                                document.getElementById('send-form').classList.remove('hidden');
+                                document.getElementById('send-direct-form').classList.add('hidden');
+                                document.getElementById('send-config-section').classList.remove('hidden');
+                                document.getElementById('send-info').textContent =
+                                    `Folder: ${stateData.bewerbungsname} — Unternehmen: ${stateData.total_companies}`;
+                            } else {
+                                document.getElementById('send-warning').classList.remove('hidden');
+                                document.getElementById('send-form').classList.add('hidden');
+                                document.getElementById('send-direct-form').classList.add('hidden');
+                                document.getElementById('send-config-section').classList.add('hidden');
+                            }
+                        });
+                }
             });
     },
 
@@ -531,6 +586,73 @@ const App = {
         } catch (e) {
             this.toast('Verbindungsfehler', 'error');
             document.getElementById('send-btn').disabled = false;
+        }
+    },
+    
+        // ==========================================
+    // TOGGLE SEND MODE (With/Without Generate)
+    // ==========================================
+    toggleSendMode(isDirect) {
+        const labelWith = document.getElementById('send-label-with');
+        const labelWithout = document.getElementById('send-label-without');
+        const sendBtn = document.getElementById('send-btn');
+        const directBtn = document.getElementById('send-direct-btn');
+
+        if (isDirect) {
+            labelWith.classList.remove('active');
+            labelWithout.classList.add('active');
+            sendBtn.classList.add('hidden');
+            directBtn.classList.remove('hidden');
+        } else {
+            labelWith.classList.add('active');
+            labelWithout.classList.remove('active');
+            sendBtn.classList.remove('hidden');
+            directBtn.classList.add('hidden');
+        }
+
+        this.updateSendPage();
+    },
+
+    // ==========================================
+    // DIRECT SEND (Without Generate)
+    // ==========================================
+    async startDirectSend() {
+        const delay = parseInt(document.getElementById('delay-input').value) || 10;
+        const startNum = parseInt(document.getElementById('start-input').value) || 1;
+        const sendMode = document.querySelector('input[name="send-mode"]:checked').value;
+        const scheduledDT = sendMode === 'schedule' ? this.getScheduledDT() : '';
+
+        const formData = new FormData();
+        formData.append('excel', this.state.files.direct_excel);
+        formData.append('letter', this.state.files.direct_letter);
+        formData.append('pdf', this.state.files.direct_pdf);
+        formData.append('delay', delay);
+        formData.append('start', startNum);
+        formData.append('scheduled_dt', scheduledDT);
+
+        document.getElementById('send-direct-btn').disabled = true;
+
+        try {
+            const resp = await fetch('/api/send/direct', { method: 'POST', body: formData });
+            const data = await resp.json();
+
+            if (data.success) {
+                document.getElementById('send-direct-form').classList.add('hidden');
+                document.getElementById('send-config-section').classList.add('hidden');
+
+                if (sendMode === 'schedule') {
+                    document.getElementById('schedule-countdown').classList.remove('hidden');
+                    this.startCountdown(scheduledDT);
+                }
+
+                this.startSendPolling();
+            } else {
+                this.toast(data.error || 'Fehler', 'error');
+                document.getElementById('send-direct-btn').disabled = false;
+            }
+        } catch (e) {
+            this.toast('Verbindungsfehler', 'error');
+            document.getElementById('send-direct-btn').disabled = false;
         }
     },
 
