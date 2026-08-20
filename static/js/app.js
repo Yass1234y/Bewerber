@@ -62,6 +62,9 @@ const App = {
         document.getElementById('access-code').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.login();
         });
+        
+        // Export generated files
+        document.getElementById('export-generated-btn').addEventListener('click', () => this.exportGenerated());
 
         // Navigation
         document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -276,6 +279,14 @@ const App = {
                 }
             } catch (e) {}
         }, 1000);
+    },
+    
+    // ==========================================
+    // EXPORT GENERATED
+    // ==========================================
+    exportGenerated() {
+        this.toast('ZIP wird erstellt...', 'info');
+        window.location.href = '/api/generate/export';
     },
 
     // ==========================================
