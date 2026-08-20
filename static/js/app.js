@@ -14,6 +14,7 @@ const App = {
             other: null,
             letter: null,
             extra: null,
+            zip: null,
         },
         generating: false,
         sending: false,
@@ -62,6 +63,15 @@ const App = {
         document.getElementById('access-code').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.login();
         });
+        
+                // Mode toggle
+        document.getElementById('mode-toggle').addEventListener('change', (e) => this.toggleMode(e.target.checked));
+
+        // Zip upload
+        this.bindFileUpload('zip-input', 'zip');
+
+        // Import
+        document.getElementById('import-btn').addEventListener('click', () => this.startImport());
         
         // Export generated files
         document.getElementById('export-generated-btn').addEventListener('click', () => this.exportGenerated());
@@ -137,6 +147,12 @@ const App = {
             scheduleValid = this.validateSchedule();
         }
         sendBtn.disabled = !letterReady || !scheduleValid;
+
+        // Import button
+        const importBtn = document.getElementById('import-btn');
+        if (importBtn) {
+            importBtn.disabled = !this.state.files.zip;
+        }
     },
 
     // ==========================================
@@ -279,6 +295,68 @@ const App = {
                 }
             } catch (e) {}
         }, 1000);
+    },
+    
+        // ==========================================
+    // MODE TOGGLE (Generate / Import)
+    // ==========================================
+    toggleMode(isImport) {
+        const generateSection = document.getElementById('generate-mode-section');
+        const importSection = document.getElementById('import-mode-section');
+        const labelGenerate = document.getElementById('label-generate');
+        const labelImport = document.getElementById('label-import');
+
+        if (isImport) {
+            generateSection.classList.add('hidden');
+            importSection.classList.remove('hidden');
+            labelGenerate.classList.remove('active');
+            labelImport.classList.add('active');
+        } else {
+            generateSection.classList.remove('hidden');
+            importSection.classList.add('hidden');
+            labelGenerate.classList.add('active');
+            labelImport.classList.remove('active');
+        }
+
+        this.updateButtons();
+    },
+
+    // ==========================================
+    // IMPORT
+    // ==========================================
+    async startImport() {
+        if (!this.state.files.zip) return;
+
+        const formData = new FormData();
+        formData.append('zip', this.state.files.zip);
+
+        document.getElementById('import-btn').disabled = true;
+        document.getElementById('loading-overlay').classList.remove('hidden');
+
+        try {
+            const resp = await fetch('/api/generate/import', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await resp.json();
+
+            document.getElementById('loading-overlay').classList.add('hidden');
+
+            if (data.success) {
+                this.state.generated = true;
+                document.getElementById('import-mode-section').classList.add('hidden');
+                document.getElementById('gen-success').classList.remove('hidden');
+                document.getElementById('gen-success-title').textContent = 'Import erfolgreich!';
+                this.toast(`${data.total_companies} Unternehmen importiert!`, 'success');
+            } else {
+                this.toast(data.error || 'Import fehlgeschlagen', 'error');
+                document.getElementById('import-btn').disabled = false;
+            }
+        } catch (e) {
+            document.getElementById('loading-overlay').classList.add('hidden');
+            this.toast('Verbindungsfehler', 'error');
+            document.getElementById('import-btn').disabled = false;
+        }
     },
     
     // ==========================================
@@ -565,7 +643,7 @@ const App = {
         }
     },
 
-    async resetAll() {
+        async resetAll() {
         try {
             await fetch('/api/reset', { method: 'POST' });
 
@@ -574,11 +652,16 @@ const App = {
             document.getElementById('send-interrupted').classList.add('hidden');
             document.getElementById('send-progress').classList.add('hidden');
             document.getElementById('gen-success').classList.add('hidden');
-            document.getElementById('gen-form').classList.remove('hidden');
-            document.querySelector('.config-section').classList.remove('hidden');
+            document.getElementById('gen-progress').classList.add('hidden');
+            document.getElementById('import-mode-section').classList.add('hidden');
+            document.getElementById('generate-mode-section').classList.remove('hidden');
+
+            // Reset mode toggle
+            document.getElementById('mode-toggle').checked = false;
+            this.toggleMode(false);
 
             // Reset files
-            this.state.files = { excel: null, cv: null, template: null, other: null, letter: null, extra: null };
+            this.state.files = { excel: null, cv: null, template: null, other: null, letter: null, extra: null, zip: null };
             document.querySelectorAll('.upload-filename').forEach(el => el.textContent = '');
             document.querySelectorAll('.upload-card').forEach(el => el.classList.remove('has-file'));
             document.querySelectorAll('input[type="file"]').forEach(el => el.value = '');
