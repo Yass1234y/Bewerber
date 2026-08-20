@@ -82,133 +82,182 @@
     <main class="content">
 
         <!-- ============ PAGE: ANSCHREIBEN ============ -->
-        <div id="page-anschreiben" class="page active">
-            <div class="page-header">
-                <h1 class="page-title">Anschreiben generieren</h1>
-                <p class="page-subtitle">Laden Sie Ihre Dateien hoch und generieren Sie Bewerbungen</p>
-            </div>
+<div id="page-anschreiben" class="page active">
+    <div class="page-header">
+        <h1 class="page-title">Anschreiben generieren</h1>
+        <p class="page-subtitle">Laden Sie Ihre Dateien hoch und generieren Sie Bewerbungen</p>
+    </div>
 
-            <!-- Upload Form -->
-            <div id="gen-form" class="card-grid">
-                <div class="upload-card" data-type="excel" data-accept=".xlsx,.xls">
-                    <input type="file" id="excel-input" accept=".xlsx,.xls" hidden>
-                    <label for="excel-input" class="upload-label">
-                        <div class="upload-icon">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                <polyline points="14 2 14 8 20 8"></polyline>
-                            </svg>
-                        </div>
-                        <div class="upload-text">
-                            <span class="upload-title">Excel Datei</span>
-                            <span class="upload-hint">.xlsx, .xls</span>
-                        </div>
-                    </label>
-                    <div class="upload-filename" id="excel-name"></div>
-                </div>
+    <!-- Mode Switch -->
+    <div class="mode-switch-container">
+        <span class="mode-label active" id="label-generate">Generate</span>
+        <label class="mode-switch">
+            <input type="checkbox" id="mode-toggle">
+            <span class="mode-switch-slider"></span>
+        </label>
+        <span class="mode-label" id="label-import">Import</span>
+    </div>
 
-                <div class="upload-card" data-type="cv" data-accept=".pdf">
-                    <input type="file" id="cv-input" accept=".pdf" hidden>
-                    <label for="cv-input" class="upload-label">
-                        <div class="upload-icon">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                <polyline points="14 2 14 8 20 8"></polyline>
-                            </svg>
-                        </div>
-                        <div class="upload-text">
-                            <span class="upload-title">Lebenslauf (PDF)</span>
-                            <span class="upload-hint">.pdf</span>
-                        </div>
-                    </label>
-                    <div class="upload-filename" id="cv-name"></div>
-                </div>
-
-                <div class="upload-card" data-type="template" data-accept=".docx">
-                    <input type="file" id="template-input" accept=".docx" hidden>
-                    <label for="template-input" class="upload-label">
-                        <div class="upload-icon">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                <polyline points="14 2 14 8 20 8"></polyline>
-                            </svg>
-                        </div>
-                        <div class="upload-text">
-                            <span class="upload-title">Anschreiben Template</span>
-                            <span class="upload-hint">.docx</span>
-                        </div>
-                    </label>
-                    <div class="upload-filename" id="template-name"></div>
-                </div>
-
-                <div class="upload-card" data-type="other" data-accept=".pdf">
-                    <input type="file" id="other-input" accept=".pdf" hidden>
-                    <label for="other-input" class="upload-label">
-                        <div class="upload-icon">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></polyline>
-                                <polyline points="14 2 14 8 20 8"></polyline>
-                            </svg>
-                        </div>
-                        <div class="upload-text">
-                            <span class="upload-title">Zeugnisse & Zertifikate</span>
-                            <span class="upload-hint">.pdf</span>
-                        </div>
-                    </label>
-                    <div class="upload-filename" id="other-name"></div>
-                </div>
-            </div>
-
-            <!-- Config -->
-            <div class="config-section">
-                <div class="config-row">
-                    <div class="config-field">
-                        <label>Anschreiben Position</label>
-                        <input type="number" id="anschreiben-pos" value="2" min="1" class="input-field">
+    <!-- ===== GENERATE MODE ===== -->
+    <div id="generate-mode-section">
+        <div id="gen-form" class="card-grid">
+            <div class="upload-card" data-type="excel" data-accept=".xlsx,.xls">
+                <input type="file" id="excel-input" accept=".xlsx,.xls" hidden>
+                <label for="excel-input" class="upload-label">
+                    <div class="upload-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
                     </div>
-                    <div class="config-field">
-                        <label>Bewerbungsname</label>
-                        <input type="text" id="bewerbungsname" value="Bewerbung_Yassine_Bouzagaouy" class="input-field">
+                    <div class="upload-text">
+                        <span class="upload-title">Excel Datei</span>
+                        <span class="upload-hint">.xlsx, .xls</span>
                     </div>
-                </div>
-                <button id="generate-btn" class="btn-primary btn-large" disabled>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-                    </svg>
-                    Generate
-                </button>
+                </label>
+                <div class="upload-filename" id="excel-name"></div>
             </div>
 
-            <!-- Progress -->
-            <div id="gen-progress" class="progress-section hidden">
-                <div class="progress-header">
-                    <h3>Generierung läuft...</h3>
-                    <span id="gen-progress-text" class="progress-text">0 / 0</span>
-                </div>
-                <div class="progress-bar-container">
-                    <div id="gen-progress-bar" class="progress-bar"></div>
-                </div>
-                <div id="gen-log" class="log-list"></div>
+            <div class="upload-card" data-type="cv" data-accept=".pdf">
+                <input type="file" id="cv-input" accept=".pdf" hidden>
+                <label for="cv-input" class="upload-label">
+                    <div class="upload-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
+                    </div>
+                    <div class="upload-text">
+                        <span class="upload-title">Lebenslauf (PDF)</span>
+                        <span class="upload-hint">.pdf</span>
+                    </div>
+                </label>
+                <div class="upload-filename" id="cv-name"></div>
             </div>
 
-            <!-- Success -->
-            <div id="gen-success" class="success-card hidden">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                </svg>
-                <h3>Generierung abgeschlossen!</h3>
-                <p>Sie können jetzt E-Mails senden.</p>
-                <button id="export-generated-btn" class="btn-primary" style="margin-bottom: 12px;">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
-                    Export Generated
-                </button>
+            <div class="upload-card" data-type="template" data-accept=".docx">
+                <input type="file" id="template-input" accept=".docx" hidden>
+                <label for="template-input" class="upload-label">
+                    <div class="upload-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
+                    </div>
+                    <div class="upload-text">
+                        <span class="upload-title">Anschreiben Template</span>
+                        <span class="upload-hint">.docx</span>
+                    </div>
+                </label>
+                <div class="upload-filename" id="template-name"></div>
+            </div>
+
+            <div class="upload-card" data-type="other" data-accept=".pdf">
+                <input type="file" id="other-input" accept=".pdf" hidden>
+                <label for="other-input" class="upload-label">
+                    <div class="upload-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
+                    </div>
+                    <div class="upload-text">
+                        <span class="upload-title">Zeugnisse & Zertifikate</span>
+                        <span class="upload-hint">.pdf</span>
+                    </div>
+                </label>
+                <div class="upload-filename" id="other-name"></div>
             </div>
         </div>
+
+        <!-- Config -->
+        <div class="config-section">
+            <div class="config-row">
+                <div class="config-field">
+                    <label>Anschreiben Position</label>
+                    <input type="number" id="anschreiben-pos" value="2" min="1" class="input-field">
+                </div>
+                <div class="config-field">
+                    <label>Bewerbungsname</label>
+                    <input type="text" id="bewerbungsname" value="Bewerbung_Yassine_Bouzagaouy" class="input-field">
+                </div>
+            </div>
+            <button id="generate-btn" class="btn-primary btn-large" disabled>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                </svg>
+                Generate
+            </button>
+        </div>
+    </div>
+
+    <!-- ===== IMPORT MODE ===== -->
+    <div id="import-mode-section" class="hidden">
+        <div class="card-grid">
+            <div class="upload-card" data-type="zip" data-accept=".zip" style="grid-column: 1 / -1;">
+                <input type="file" id="zip-input" accept=".zip" hidden>
+                <label for="zip-input" class="upload-label">
+                    <div class="upload-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 8v13H3V8"></path>
+                            <path d="M1 3h22v5H1z"></path>
+                            <path d="M10 12H14"></path>
+                        </svg>
+                    </div>
+                    <div class="upload-text">
+                        <span class="upload-title">ZIP Datei (Export)</span>
+                        <span class="upload-hint">.zip — Zuvor exportierte Bewerbungen</span>
+                    </div>
+                </label>
+                <div class="upload-filename" id="zip-name"></div>
+            </div>
+        </div>
+
+        <div class="config-section">
+            <div class="import-info-text">
+                <p>Wählen Sie eine zuvor exportierte ZIP-Datei aus, um die Bewerbungen ohne erneute Generierung zu importieren.</p>
+            </div>
+            <button id="import-btn" class="btn-primary btn-large" disabled>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                Import
+            </button>
+        </div>
+    </div>
+
+    <!-- Progress (shared) -->
+    <div id="gen-progress" class="progress-section hidden">
+        <div class="progress-header">
+            <h3>Generierung läuft...</h3>
+            <span id="gen-progress-text" class="progress-text">0 / 0</span>
+        </div>
+        <div class="progress-bar-container">
+            <div id="gen-progress-bar" class="progress-bar"></div>
+        </div>
+        <div id="gen-log" class="log-list"></div>
+    </div>
+
+    <!-- Success (shared) -->
+    <div id="gen-success" class="success-card hidden">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+        <h3 id="gen-success-title">Generierung abgeschlossen!</h3>
+        <p>Sie können jetzt E-Mails senden.</p>
+        <button id="export-generated-btn" class="btn-primary" style="margin-bottom: 12px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Export Generated
+        </button>
+    </div>
+</div>
 
         <!-- ============ PAGE: SEND EMAIL ============ -->
         <div id="page-send-email" class="page">
