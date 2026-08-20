@@ -571,7 +571,8 @@ const App = {
             const data = await resp.json();
 
             if (data.success) {
-                document.getElementById('send-form').classList.add('hidden');
+            document.getElementById('send-form').classList.add('hidden');
+            document.getElementById('send-config-section').classList.add('hidden'); 
 
                 if (sendMode === 'schedule') {
                     document.getElementById('schedule-countdown').classList.remove('hidden');
@@ -777,13 +778,24 @@ const App = {
             document.getElementById('gen-progress').classList.add('hidden');
             document.getElementById('import-mode-section').classList.add('hidden');
             document.getElementById('generate-mode-section').classList.remove('hidden');
+            document.getElementById('send-direct-form').classList.add('hidden');
+            document.getElementById('send-config-section').classList.add('hidden');
 
-            // Reset mode toggle
+            // Reset mode toggles
             document.getElementById('mode-toggle').checked = false;
             this.toggleMode(false);
+            document.getElementById('send-mode-toggle').checked = false;
+            document.getElementById('send-label-with').classList.add('active');
+            document.getElementById('send-label-without').classList.remove('active');
+            document.getElementById('send-btn').classList.remove('hidden');
+            document.getElementById('send-direct-btn').classList.add('hidden');
 
             // Reset files
-            this.state.files = { excel: null, cv: null, template: null, other: null, letter: null, extra: null, zip: null };
+            this.state.files = {
+                excel: null, cv: null, template: null, other: null,
+                letter: null, extra: null, zip: null,
+                direct_excel: null, direct_letter: null, direct_pdf: null
+            };
             document.querySelectorAll('.upload-filename').forEach(el => el.textContent = '');
             document.querySelectorAll('.upload-card').forEach(el => el.classList.remove('has-file'));
             document.querySelectorAll('input[type="file"]').forEach(el => el.value = '');
