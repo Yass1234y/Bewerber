@@ -527,12 +527,12 @@ def reset_state():
 
         state["bewerbungsname"] = None
         state["total_companies"] = 0
-        
+
         # Direct send mode
-        "direct_mode": False,
-        "direct_emails": [],
-        "direct_letter_path": None,
-        "direct_pdf_path": None,
+        state["direct_mode"] = False
+        state["direct_emails"] = []
+        state["direct_letter_path"] = None
+        state["direct_pdf_path"] = None
 
         state["anschreiben_pos"] = 2
 
@@ -1762,76 +1762,67 @@ def generate_thread(
                 state["gen_progress"] = (
                     cmp_num / total
                 )
-                # ------------------------------------------
-                # Write metadata for future import
-                # ------------------------------------------
 
-                try:
+        # ------------------------------------------
+        # Write metadata for future import
+        # ------------------------------------------
 
-                    metadata = {
+        try:
 
-                        "bewerbungsname":
-                            bewerbungsname,
+            metadata = {
 
-                        "total_companies":
-                            total,
+                "bewerbungsname":
+                    bewerbungsname,
 
-                        "other_file": (
+                "total_companies":
+                    total,
 
-                            other_path.name
-                            if other_path
-                            else None
+                "other_file": (
 
-                        ),
+                    other_path.name
+                    if other_path
+                    else None
 
-                        "cv_file":
-                            cv_path.name,
+                ),
 
-                        "template_file":
-                            template_path.name,
+                "cv_file":
+                    cv_path.name,
 
-                        "excel_file":
-                            excel_path.name,
+                "template_file":
+                    template_path.name,
 
-                    }
+                "excel_file":
+                    excel_path.name,
 
-                    with open(
+            }
 
-                        base_dir / "metadata.json",
-                        "w",
-                        encoding="utf-8"
+            with open(
 
-                    ) as f:
+                base_dir / "metadata.json",
+                "w",
+                encoding="utf-8"
 
-                        json.dump(
-                            metadata,
-                            f,
-                            ensure_ascii=False,
-                            indent=2
-                        )
+            ) as f:
 
-                except Exception as e:
+                json.dump(
+                    metadata,
+                    f,
+                    ensure_ascii=False,
+                    indent=2
+                )
 
-                    print(
-                        "METADATA WRITE ERROR:",
-                        repr(e)
-                    )
+        except Exception as e:
+
+            print(
+                "METADATA WRITE ERROR:",
+                repr(e)
+            )
 
         # ------------------------------------------
         # Complete
         # ------------------------------------------
 
         with state_lock:
-            state["generating"] = False
-            state["generated"] = True
-            state["gen_progress"] = 1
-
-        # ------------------------------------------
-        # Complete
-        # ------------------------------------------
-
-        with state_lock:
-
             state["generating"] = False
             state["generated"] = True
             state["gen_progress"] = 1
