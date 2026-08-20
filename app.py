@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file, render_template
+from flask import Flask, request, jsonify, send_file, render_template, after_this_request
 import os
 import threading
 import time
@@ -13,6 +13,8 @@ import sys
 import subprocess
 import platform
 from pathlib import Path
+import zipfile
+import tempfile
 
 from docx import Document
 import pandas as pd
