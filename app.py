@@ -194,6 +194,12 @@ state = {
 
     "bewerbungsname": None,
     "total_companies": 0,
+    
+    # Direct send mode
+    "direct_mode": False,
+    "direct_emails": [],
+    "direct_letter_path": None,
+    "direct_pdf_path": None,
 
     "anschreiben_pos": 2,
 
@@ -520,6 +526,12 @@ def reset_state():
 
         state["bewerbungsname"] = None
         state["total_companies"] = 0
+        
+        # Direct send mode
+        "direct_mode": False,
+        "direct_emails": [],
+        "direct_letter_path": None,
+        "direct_pdf_path": None,
 
         state["anschreiben_pos"] = 2
 
@@ -2293,6 +2305,313 @@ def send_thread(
                 "error": str(e),
 
             })
+            # ============================================================
+# DIRECT SEND THREAD (Without Generate)
+# ============================================================
+
+def send_direct_thread():
+
+    try:
+
+        with state_lock:
+
+            letter_path = Path(
+
+                state["direct_letter_path"]
+
+            ).resolve()
+
+            pdf_path = (
+
+                Path(
+
+                    state["direct_pdf_path"]
+
+                ).resolve()
+
+                if state.get("direct_pdf_path")
+                else None
+
+            )
+
+            delay = state.get("delay", 10)
+            start_num = state.get("start", 1)
+            scheduled_dt = state.get("scheduled_dt")
+
+            emails_list = state.get(
+                "direct_emails",
+                []
+            )
+
+            total = len(emails_list)
+
+            state["sending"] = True
+            state["send_done"] = False
+            state["interrupted_at"] = None
+            state["send_log"] = []
+            state["send_progress"] = 0
+            state["network_error"] = False
+            state["total_companies"] = total
+
+        # ------------------------------------------
+        # Check template
+        # ------------------------------------------
+
+        if not letter_path.exists():
+
+            raise FileNotFoundError(
+
+                f"Email template not found: "
+                f"{letter_path}"
+
+            )
+
+        # ------------------------------------------
+        # Read template (as-is, no replacements)
+        # ------------------------------------------
+
+        doc = Document(
+            str(letter_path)
+        )
+
+        lines = [
+
+            p.text.strip()
+            for p in doc.paragraphs
+            if p.text.strip()
+
+        ]
+
+        if not lines:
+
+            raise ValueError(
+                "Email template is empty"
+            )
+
+        subject = lines[0]
+
+        message_body = "\n".join(
+            lines[1:]
+        )
+
+        # ------------------------------------------
+        # Schedule wait
+        # ------------------------------------------
+
+        if scheduled_dt:
+
+            with state_lock:
+
+                state[
+                    "waiting_scheduled"
+                ] = True
+
+            while True:
+
+                now = datetime.datetime.now()
+
+                remaining = (
+
+                    scheduled_dt - now
+
+                ).total_seconds()
+
+                if remaining <= 0:
+                    break
+
+                time.sleep(
+                    min(remaining, 1)
+                )
+
+            with state_lock:
+
+                state[
+                    "waiting_scheduled"
+                ] = False
+
+        # ------------------------------------------
+        # Send emails
+        # ------------------------------------------
+
+        for i in range(
+
+            start_num - 1,
+            total
+
+        ):
+
+            email = emails_list[i]
+            cmp_num = i + 1
+
+            try:
+
+                gmail_send(
+
+                    email,
+                    subject,
+                    message_body,
+
+                    str(pdf_path)
+                    if pdf_path
+                    and pdf_path.exists()
+                    else None,
+
+                    None,
+                    None
+
+                )
+
+                log_event(
+
+                    "Direct_Send",
+                    "sent",
+
+                    company_num=cmp_num,
+                    email=email,
+                    status="sent",
+
+                    files_sent=(
+                        [pdf_path.name]
+                        if pdf_path
+                        else []
+                    )
+
+                )
+
+                with state_lock:
+
+                    state[
+                        "send_log"
+                    ].append({
+
+                        "num": cmp_num,
+                        "email": email,
+                        "status": "sent",
+
+                    })
+
+                    state[
+                        "send_progress"
+                    ] = cmp_num / total
+
+                time.sleep(delay)
+
+            except Exception as e:
+
+                print(
+
+                    f"DIRECT SEND ERROR "
+                    f"#{cmp_num}:",
+                    repr(e)
+
+                )
+
+                if is_network_error(e):
+
+                    log_event(
+
+                        "Direct_Send",
+                        "network_error",
+
+                        company_num=cmp_num,
+                        email=email,
+                        status="network_error",
+                        error_msg=str(e)
+
+                    )
+
+                    with state_lock:
+
+                        state[
+                            "send_log"
+                        ].append({
+
+                            "num": cmp_num,
+                            "email": email,
+                            "status":
+                                "network_error",
+
+                        })
+
+                        state[
+                            "interrupted_at"
+                        ] = cmp_num
+
+                        state[
+                            "sending"
+                        ] = False
+
+                        state[
+                            "network_error"
+                        ] = True
+
+                    return
+
+                else:
+
+                    log_event(
+
+                        "Direct_Send",
+                        "error",
+
+                        company_num=cmp_num,
+                        email=email,
+                        status="error",
+                        error_msg=str(e)
+
+                    )
+
+                    with state_lock:
+
+                        state[
+                            "send_log"
+                        ].append({
+
+                            "num": cmp_num,
+                            "email": email,
+                            "status": "error",
+
+                        })
+
+                        state[
+                            "send_progress"
+                        ] = cmp_num / total
+
+        # ------------------------------------------
+        # Complete
+        # ------------------------------------------
+
+        with state_lock:
+
+            state["sending"] = False
+            state["scheduled_dt"] = None
+            state["send_done"] = True
+
+    except Exception as e:
+
+        print(
+
+            "FATAL DIRECT SEND ERROR:",
+            repr(e)
+
+        )
+
+        with state_lock:
+
+            state["sending"] = False
+            state["waiting_scheduled"] = False
+            state["send_done"] = False
+
+            state[
+                "send_log"
+            ].append({
+
+                "num": 0,
+                "email": "",
+                "status": "fatal",
+                "error": str(e),
+
+            })
 
 
 # ============================================================
@@ -3510,6 +3829,391 @@ def send():
         "success": True
 
     }), 200
+    
+# ============================================================
+# DIRECT SEND (Without Generate)
+# ============================================================
+
+@app.route(
+    "/api/send/direct",
+    methods=["POST"]
+)
+def send_direct():
+
+    with state_lock:
+
+        if not state["logged_in"]:
+
+            return jsonify({
+
+                "success": False,
+                "error": "Not logged in",
+
+            }), 403
+
+        if state["sending"]:
+
+            return jsonify({
+
+                "success": False,
+                "error":
+                    "Senden läuft bereits",
+
+            }), 400
+
+    # ------------------------------------------
+    # Receive files
+    # ------------------------------------------
+
+    excel_file = request.files.get(
+        "excel"
+    )
+
+    letter_file = request.files.get(
+        "letter"
+    )
+
+    pdf_file = request.files.get(
+        "pdf"
+    )
+
+    if not excel_file:
+
+        return jsonify({
+
+            "success": False,
+            "error":
+                "Excel (Emails) fehlt",
+
+        }), 400
+
+    if not letter_file:
+
+        return jsonify({
+
+            "success": False,
+            "error":
+                "Email Template (DOCX) fehlt",
+
+        }), 400
+
+    if not pdf_file:
+
+        return jsonify({
+
+            "success": False,
+            "error":
+                "PDF Anhang fehlt",
+
+        }), 400
+
+    # ------------------------------------------
+    # Delay
+    # ------------------------------------------
+
+    try:
+
+        delay = int(
+            request.form.get(
+                "delay",
+                10
+            )
+        )
+
+    except Exception:
+
+        delay = 10
+
+    if delay < 0:
+        delay = 0
+
+    # ------------------------------------------
+    # Start
+    # ------------------------------------------
+
+    try:
+
+        start_num = int(
+            request.form.get(
+                "start",
+                1
+            )
+        )
+
+    except Exception:
+
+        start_num = 1
+
+    if start_num < 1:
+        start_num = 1
+
+    # ------------------------------------------
+    # Schedule
+    # ------------------------------------------
+
+    schedule_str = request.form.get(
+        "scheduled_dt",
+        ""
+    )
+
+    scheduled_dt = None
+
+    if schedule_str:
+
+        try:
+
+            scheduled_dt = (
+
+                datetime.datetime
+                .fromisoformat(
+                    schedule_str
+                )
+
+            )
+
+            if (
+
+                scheduled_dt
+                <= datetime.datetime.now()
+
+            ):
+
+                return jsonify({
+
+                    "success": False,
+                    "error":
+                        "Die gewählte Zeit "
+                        "liegt in der Vergangenheit",
+
+                }), 400
+
+        except Exception:
+
+            return jsonify({
+
+                "success": False,
+                "error":
+                    "Ungültiges Datum/Zeit Format",
+
+            }), 400
+
+    # ------------------------------------------
+    # Save files to temp dir
+    # ------------------------------------------
+
+    temp_dir = (
+
+        APPLICATIONS_DIR
+        / f"direct_send_{int(time.time())}"
+
+    )
+
+    temp_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    try:
+
+        excel_path = save_upload(
+
+            excel_file,
+            temp_dir,
+            "emails.xlsx"
+
+        )
+
+        letter_path = save_upload(
+
+            letter_file,
+            temp_dir,
+            "Email_Template.docx"
+
+        )
+
+        pdf_path = save_upload(
+
+            pdf_file,
+            temp_dir,
+            "Anhang.pdf"
+
+        )
+
+    except Exception as e:
+
+        print(
+            "DIRECT SEND UPLOAD ERROR:",
+            repr(e)
+        )
+
+        shutil.rmtree(
+            str(temp_dir),
+            ignore_errors=True
+        )
+
+        return jsonify({
+
+            "success": False,
+
+            "error":
+                "Fehler beim Speichern: "
+                + str(e),
+
+        }), 500
+
+    # ------------------------------------------
+    # Read emails from Excel
+    # ------------------------------------------
+
+    try:
+
+        df = pd.read_excel(
+            str(excel_path)
+        )
+
+        # Find email column
+        email_col = None
+
+        for col in df.columns:
+
+            col_lower = str(
+                col
+            ).lower()
+
+            if col_lower in (
+
+                "email",
+                "e-mail",
+                "mail",
+                "e_mail",
+                "emails",
+                "e-mail-adresse",
+                "email adresse",
+
+            ):
+
+                email_col = col
+                break
+
+        if not email_col:
+
+            # Use first column
+            email_col = df.columns[0]
+
+        emails_list = [
+
+            str(e).strip()
+            for e in df[email_col].tolist()
+            if str(e).strip()
+            and str(e).strip().lower() != "nan"
+
+        ]
+
+        if not emails_list:
+
+            shutil.rmtree(
+                str(temp_dir),
+                ignore_errors=True
+            )
+
+            return jsonify({
+
+                "success": False,
+                "error":
+                    "Keine Emails in der "
+                    "Excel-Datei gefunden",
+
+            }), 400
+
+        if start_num > len(emails_list):
+
+            shutil.rmtree(
+                str(temp_dir),
+                ignore_errors=True
+            )
+
+            return jsonify({
+
+                "success": False,
+                "error":
+                    "Startnummer ist größer "
+                    "als die Anzahl der Emails",
+
+            }), 400
+
+    except Exception as e:
+
+        print(
+            "EXCEL READ ERROR:",
+            repr(e)
+        )
+
+        shutil.rmtree(
+            str(temp_dir),
+            ignore_errors=True
+        )
+
+        return jsonify({
+
+            "success": False,
+
+            "error":
+                "Fehler beim Lesen der Excel: "
+                + str(e),
+
+        }), 500
+
+    # ------------------------------------------
+    # State
+    # ------------------------------------------
+
+    with state_lock:
+
+        state["direct_mode"] = True
+        state["direct_emails"] = emails_list
+        state["direct_letter_path"] = str(letter_path)
+        state["direct_pdf_path"] = str(pdf_path)
+
+        state["sending"] = True
+        state["send_done"] = False
+        state["interrupted_at"] = None
+
+        state["send_progress"] = 0
+        state["send_log"] = []
+
+        state["delay"] = delay
+        state["start"] = start_num
+        state["scheduled_dt"] = scheduled_dt
+
+        state["network_error"] = False
+        state["waiting_scheduled"] = False
+
+        state["total_companies"] = len(
+            emails_list
+        )
+
+        state["base_dir"] = str(temp_dir)
+        state["bewerbungsname"] = "Direct_Send"
+
+    # ------------------------------------------
+    # Thread
+    # ------------------------------------------
+
+    thread = threading.Thread(
+
+        target=send_direct_thread,
+
+        daemon=True
+
+    )
+
+    thread.start()
+
+    return jsonify({
+
+        "success": True
+
+    }), 200
 
 
 # ============================================================
@@ -3561,6 +4265,12 @@ def send_status():
             "bewerbungsname":
                 state["bewerbungsname"],
 
+            "direct_mode":
+                state.get(
+                    "direct_mode",
+                    False
+                ),
+
         })
 
 
@@ -3585,31 +4295,44 @@ def resume_send():
 
             }), 403
 
-        if not state["base_dir"]:
-
-            return jsonify({
-
-                "success": False,
-                "error":
-                    "Application folder not found",
-
-            }), 400
-
-        base_dir = Path(
-            state["base_dir"]
-        ).resolve()
-
-        total = state[
-            "total_companies"
-        ]
-
-        delay = state[
-            "delay"
-        ]
-
-        extra_path = state.get(
-            "extra"
+        is_direct = state.get(
+            "direct_mode",
+            False
         )
+
+        if is_direct:
+
+            total = len(
+
+                state.get(
+                    "direct_emails",
+                    []
+                )
+
+            )
+
+        else:
+
+            if not state["base_dir"]:
+
+                return jsonify({
+
+                    "success": False,
+                    "error":
+                        "Application folder not found",
+
+                }), 400
+
+            base_dir = Path(
+                state["base_dir"]
+            ).resolve()
+
+            total = state[
+                "total_companies"
+            ]
+
+            delay = state["delay"]
+            extra_path = state.get("extra")
 
     data = request.json or {}
 
@@ -3627,13 +4350,9 @@ def resume_send():
         resume_from = 1
 
     if resume_from < 1:
-
         resume_from = 1
 
-    if (
-        total
-        and resume_from > total
-    ):
+    if total and resume_from > total:
 
         return jsonify({
 
@@ -3644,7 +4363,42 @@ def resume_send():
         }), 400
 
     # ------------------------------------------
-    # Find email template
+    # Direct mode resume
+    # ------------------------------------------
+
+    if is_direct:
+
+        with state_lock:
+
+            state["interrupted_at"] = None
+            state["network_error"] = False
+
+            state["sending"] = True
+            state["send_done"] = False
+
+            state["start"] = resume_from
+
+            state["send_progress"] = 0
+            state["send_log"] = []
+
+            state["scheduled_dt"] = None
+            state["waiting_scheduled"] = False
+
+        thread = threading.Thread(
+
+            target=send_direct_thread,
+            daemon=True
+
+        )
+
+        thread.start()
+
+        return jsonify({
+            "success": True
+        })
+
+    # ------------------------------------------
+    # Normal mode resume (existing logic)
     # ------------------------------------------
 
     letter_files = list(
@@ -3656,9 +4410,7 @@ def resume_send():
     if not letter_files:
 
         letter_files = list(
-            base_dir.glob(
-                "*.docx"
-            )
+            base_dir.glob("*.docx")
         )
 
     if not letter_files:
@@ -3672,13 +4424,8 @@ def resume_send():
         }), 400
 
     letter_path = (
-        letter_files[0]
-        .resolve()
+        letter_files[0].resolve()
     )
-
-    # ------------------------------------------
-    # State
-    # ------------------------------------------
 
     with state_lock:
 
@@ -3693,10 +4440,6 @@ def resume_send():
         state["send_progress"] = 0
         state["send_log"] = []
 
-    # ------------------------------------------
-    # Thread
-    # ------------------------------------------
-
     thread = threading.Thread(
 
         target=send_thread,
@@ -3704,26 +4447,21 @@ def resume_send():
         args=(
 
             str(letter_path),
-
             delay,
-
             resume_from,
-
             None,
-
             extra_path,
 
         ),
 
         daemon=True
+
     )
 
     thread.start()
 
     return jsonify({
-
         "success": True
-
     })
 
 
