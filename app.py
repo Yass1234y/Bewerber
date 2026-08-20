@@ -1749,6 +1749,69 @@ def generate_thread(
                 state["gen_progress"] = (
                     cmp_num / total
                 )
+                # ------------------------------------------
+                # Write metadata for future import
+                # ------------------------------------------
+
+                try:
+
+                    metadata = {
+
+                        "bewerbungsname":
+                            bewerbungsname,
+
+                        "total_companies":
+                            total,
+
+                        "other_file": (
+
+                            other_path.name
+                            if other_path
+                            else None
+
+                        ),
+
+                        "cv_file":
+                            cv_path.name,
+
+                        "template_file":
+                            template_path.name,
+
+                        "excel_file":
+                            excel_path.name,
+
+                    }
+
+                    with open(
+
+                        base_dir / "metadata.json",
+                        "w",
+                        encoding="utf-8"
+
+                    ) as f:
+
+                        json.dump(
+                            metadata,
+                            f,
+                            ensure_ascii=False,
+                            indent=2
+                        )
+
+                except Exception as e:
+
+                    print(
+                        "METADATA WRITE ERROR:",
+                        repr(e)
+                    )
+
+        # ------------------------------------------
+        # Complete
+        # ------------------------------------------
+
+        with state_lock:
+            state["generating"] = False
+            state["generated"] = True
+            state["gen_progress"] = 1
 
         # ------------------------------------------
         # Complete
