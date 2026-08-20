@@ -1340,6 +1340,150 @@ def safe_path(p):
         ).resolve()
 
     return p
+    
+# ============================================================
+# EXPORT GENERATED FILES
+# ============================================================
+
+@app.route(
+    "/api/generate/export",
+    methods=["GET"]
+)
+def export_generated():
+
+    with state_lock:
+
+        if not state["logged_in"]:
+
+            return jsonify({
+
+                "success": False,
+                "error": "Not logged in",
+
+            }), 403
+
+        if not state["generated"]:
+
+            return jsonify({
+
+                "success": False,
+                "error": "Keine generierten Dateien vorhanden",
+
+            }), 400
+
+        base_dir = Path(
+            state["base_dir"]
+        ).resolve()
+
+        bewerbungsname = state[
+            "bewerbungsname"
+        ]
+
+    # ------------------------------------------
+    # Check folder exists
+    # ------------------------------------------
+
+    if not base_dir.exists():
+
+        return jsonify({
+
+            "success": False,
+            "error": "Ordner nicht gefunden",
+
+        }), 404
+
+    # ------------------------------------------
+    # Create ZIP in temp file
+    # ------------------------------------------
+
+    temp_fd, temp_path = tempfile.mkstemp(
+        suffix=".zip"
+    )
+
+    os.close(
+        temp_fd
+    )
+
+    try:
+
+        with zipfile.ZipFile(
+
+            temp_path,
+            "w",
+            zipfile.ZIP_DEFLATED
+
+        ) as zipf:
+
+            for root, dirs, files in os.walk(
+                str(base_dir)
+            ):
+
+                for file in files:
+
+                    file_path = (
+                        Path(root) / file
+                    )
+
+                    # Keep folder structure:
+                    # bewerbungsname/1/file.pdf
+                    arcname = (
+
+                        Path(bewerbungsname)
+                        / file_path.relative_to(base_dir)
+
+                    )
+
+                    zipf.write(
+                        str(file_path),
+                        str(arcname)
+                    )
+
+    except Exception as e:
+
+        try:
+            os.unlink(temp_path)
+        except Exception:
+            pass
+
+        print(
+            "EXPORT ZIP ERROR:",
+            repr(e)
+        )
+
+        return jsonify({
+
+            "success": False,
+            "error":
+                "Fehler beim Erstellen der ZIP-Datei: "
+                + str(e),
+
+        }), 500
+
+    # ------------------------------------------
+    # Cleanup after sending
+    # ------------------------------------------
+
+    @after_this_request
+    def cleanup(response):
+
+        try:
+            os.unlink(temp_path)
+        except Exception:
+            pass
+
+        return response
+
+    return send_file(
+
+        temp_path,
+
+        as_attachment=True,
+
+        download_name=(
+            f"{bewerbungsname}.zip"
+        )
+
+    )
 
 
 # ============================================================
