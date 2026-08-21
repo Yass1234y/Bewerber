@@ -316,148 +316,100 @@ def get_libreoffice():
 # ============================================================
 
 def convert(docx_path, pdf_path):
+    """
+    Convert DOCX to PDF using the Railway LibreOffice converter.
+    """
 
-    docx_path = Path(
-        docx_path
-    ).resolve()
-
-    pdf_path = Path(
-        pdf_path
-    ).resolve()
-
-    if not docx_path.exists():
-
-        raise FileNotFoundError(
-            f"DOCX not found: {docx_path}"
+    if not CONVERTER_API_KEY:
+        raise RuntimeError(
+            "CONVERTER_API_KEY is not configured"
         )
 
-    pdf_path.parent.mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
-    soffice = get_libreoffice()
-
-    # profile مستقل لكل عملية
-    profile_dir = (
-        pdf_path.parent /
-        ".libreoffice_profile"
-    )
-
-    profile_dir.mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
-    # Windows/Linux file URL
-    profile_uri = (
-        profile_dir
-        .resolve()
-        .as_uri()
-    )
-
-    command = [
-
-        soffice,
-
-        "--headless",
-
-        f"-env:UserInstallation={profile_uri}",
-
-        "--convert-to",
-        "pdf:writer_pdf_Export",
-
-        "--outdir",
-        str(pdf_path.parent),
-
-        str(docx_path),
-    ]
+    if not os.path.exists(docx_path):
+        raise FileNotFoundError(
+            f"DOCX file not found: {docx_path}"
+        )
 
     try:
 
-        result = subprocess.run(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=120
+        with open(docx_path, "rb") as f:
+
+            response = requests.post(
+                CONVERTER_URL,
+
+                headers={
+                    "Authorization":
+                        f"Bearer {CONVERTER_API_KEY}"
+                },
+
+                files={
+                    "file": (
+                        os.path.basename(docx_path),
+                        f,
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
+                },
+
+                timeout=120
+            )
+
+        if response.status_code != 200:
+
+            try:
+                error_data = response.json()
+                error_message = error_data.get(
+                    "error",
+                    "Unknown converter error"
+                )
+            except Exception:
+                error_message = response.text
+
+            raise RuntimeError(
+                f"PDF converter returned "
+                f"{response.status_code}: "
+                f"{error_message}"
+            )
+
+        if not response.content:
+
+            raise RuntimeError(
+                "PDF converter returned an empty response"
+            )
+
+        with open(pdf_path, "wb") as f:
+
+            f.write(response.content)
+
+        if not os.path.exists(pdf_path):
+
+            raise RuntimeError(
+                "PDF file was not created"
+            )
+
+        if os.path.getsize(pdf_path) == 0:
+
+            raise RuntimeError(
+                "Generated PDF is empty"
+            )
+
+        print(
+            f"DOCX converted successfully: "
+            f"{docx_path} -> {pdf_path}"
         )
 
-    except subprocess.TimeoutExpired:
+        return pdf_path
+
+    except requests.Timeout:
 
         raise RuntimeError(
-            "LibreOffice conversion timed out."
+            "DOCX to PDF conversion timed out"
         )
 
-    except FileNotFoundError:
+    except requests.RequestException as e:
 
         raise RuntimeError(
-            f"LibreOffice executable not found: {soffice}"
+            f"Could not connect to PDF converter: {e}"
         )
-
-    print(
-        "LibreOffice stdout:",
-        result.stdout
-    )
-
-    print(
-        "LibreOffice stderr:",
-        result.stderr
-    )
-
-    print(
-        "LibreOffice return code:",
-        result.returncode
-    )
-
-    generated_pdf = (
-        pdf_path.parent /
-        f"{docx_path.stem}.pdf"
-    )
-
-    if not generated_pdf.exists():
-
-        raise RuntimeError(
-            "LibreOffice لم ينشئ PDF.\n"
-            f"Expected: {generated_pdf}\n"
-            f"stdout: {result.stdout}\n"
-            f"stderr: {result.stderr}"
-        )
-
-    # إذا كان الاسم المطلوب مختلفًا
-    if generated_pdf != pdf_path:
-
-        if pdf_path.exists():
-            pdf_path.unlink()
-
-        generated_pdf.replace(
-            pdf_path
-        )
-
-    if not pdf_path.exists():
-
-        raise FileNotFoundError(
-            f"PDF not found after conversion: {pdf_path}"
-        )
-
-    if pdf_path.stat().st_size <= 0:
-
-        raise IOError(
-            f"PDF is empty: {pdf_path}"
-        )
-
-    # حذف profile
-    try:
-
-        shutil.rmtree(
-            profile_dir,
-            ignore_errors=True
-        )
-
-    except Exception:
-        pass
-
-    return pdf_path
 
 
 # ============================================================
