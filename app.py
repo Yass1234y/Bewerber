@@ -43,6 +43,16 @@ app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
 # ============================================================
 # CONFIGURATION
 # ============================================================
+CONVERTER_URL = os.environ.get(
+
+    "CONVERTER_URL",
+
+    "https://bewerber-production.up.railway.app/convert"
+
+)
+
+CONVERTER_API_KEY = "7fK9xQ2mL8vP4zR1sN6a"
+
 
 ACCESS_CODE = os.environ.get(
     "ACCESS_CODE",
