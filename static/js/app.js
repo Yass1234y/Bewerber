@@ -451,32 +451,102 @@ const App = {
                 // 4. Not sending → show appropriate form
                 const isDirect = document.getElementById('send-mode-toggle').checked;
 
-                if (isDirect) {
-                    // Without Generate mode → always show direct form
-                    document.getElementById('send-warning').classList.add('hidden');
-                    document.getElementById('send-form').classList.add('hidden');
-                    document.getElementById('send-direct-form').classList.remove('hidden');
-                    document.getElementById('send-config-section').classList.remove('hidden');
-                    document.getElementById('send-info').textContent = 'Direct Send Mode — Keine Generierung erforderlich';
-                } else {
-                    // With Generate mode → check if generated
-                    fetch('/api/state')
-                        .then(r => r.json())
-                        .then(stateData => {
-                            if (stateData.generated) {
-                                document.getElementById('send-warning').classList.add('hidden');
-                                document.getElementById('send-form').classList.remove('hidden');
-                                document.getElementById('send-direct-form').classList.add('hidden');
-                                document.getElementById('send-config-section').classList.remove('hidden');
-                                document.getElementById('send-info').textContent =
-                                    `Folder: ${stateData.bewerbungsname} — Unternehmen: ${stateData.total_companies}`;
-                            } else {
-                                document.getElementById('send-warning').classList.remove('hidden');
-                                document.getElementById('send-form').classList.add('hidden');
-                                document.getElementById('send-direct-form').classList.add('hidden');
-                                document.getElementById('send-config-section').classList.add('hidden');
-                            }
-                        });
+            if (isDirect) {
+
+    // ==============================
+
+    // WITHOUT GENERATE
+
+    // ==============================
+
+                document.getElementById('send-warning').classList.add('hidden');
+
+    // Hide normal generate form
+
+                document.getElementById('send-form').classList.add('hidden');
+
+    // Show direct form
+
+                document.getElementById('send-direct-form').classList.remove('hidden');
+
+    // Show send configuration
+
+                document.getElementById('send-config-section').classList.remove('hidden');
+
+    // IMPORTANT:
+
+    // Hide normal send button
+
+                document.getElementById('send-btn').classList.add('hidden');
+
+    // Show direct send button
+
+                document.getElementById('send-direct-btn').classList.remove('hidden');
+
+                document.getElementById('send-info').textContent =
+
+                    'Direct Send Mode — Keine Generierung erforderlich';
+
+            } else {
+
+    // ==============================
+
+    // WITH GENERATE
+
+    // ==============================
+
+    // Direct button must be hidden
+
+                document.getElementById('send-direct-btn').classList.add('hidden');
+
+                fetch('/api/state')
+
+                    .then(r => r.json())
+
+                    .then(stateData => {
+
+                        if (stateData.generated) {
+
+                            // Already generated → show normal send form
+
+                            document.getElementById('send-warning').classList.add('hidden');
+
+                            document.getElementById('send-form').classList.remove('hidden');
+
+                            document.getElementById('send-direct-form').classList.add('hidden');
+
+                            document.getElementById('send-config-section').classList.remove('hidden');
+
+                            // Show normal send button
+
+                            document.getElementById('send-btn').classList.remove('hidden');
+
+                            document.getElementById('send-info').textContent =
+
+                            `Folder: ${stateData.bewerbungsname} — Unternehmen: ${stateData.total_companies}`;
+
+                        } else {
+
+                            // Not generated → hide everything
+
+                            document.getElementById('send-warning').classList.remove('hidden');
+
+                            document.getElementById('send-form').classList.add('hidden');
+
+                            document.getElementById('send-direct-form').classList.add('hidden');
+
+                            document.getElementById('send-config-section').classList.add('hidden');
+
+                            // Hide both buttons
+
+                            document.getElementById('send-btn').classList.add('hidden');
+
+                            document.getElementById('send-direct-btn').classList.add('hidden');
+
+                        }
+
+                    });
+
                 }
             });
     },
